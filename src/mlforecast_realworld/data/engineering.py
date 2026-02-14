@@ -1,3 +1,18 @@
+"""
+Market data engineering module.
+
+This module provides the MarketDataEngineer class for transforming raw market
+data into a format suitable for MLForecast training. It handles:
+- Data normalization and validation
+- Frequency regularization (filling gaps in market calendars)
+- Calendar feature generation
+- Train/test splitting for time-series
+
+Example:
+    >>> engineer = MarketDataEngineer()
+    >>> training_df = engineer.build_training_frame(raw_df)
+    >>> train, test = engineer.holdout_split(training_df, horizon=14)
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -18,6 +33,8 @@ DEFAULT_SECTOR_MAP: dict[str, str] = {
 
 @dataclass(slots=True)
 class DataQualityReport:
+    """Data quality metrics for a training frame."""
+
     rows: int
     series: int
     start: pd.Timestamp
@@ -26,6 +43,21 @@ class DataQualityReport:
 
 
 class MarketDataEngineer:
+    """
+    Engineer raw market data into MLForecast-ready training frames.
+
+    This class handles the complete data preparation workflow:
+    - Normalization: type conversion, deduplication, validation
+    - Frequency regularization: fill gaps in market calendars
+    - Feature engineering: calendar features, sector codes
+    - Quality reporting: missing rates, date ranges
+
+    Attributes:
+        sector_map: Mapping of ticker symbols to sector names.
+        asset_class: Asset class label (default: "equity").
+        freq: Pandas frequency string (default: "B" for business days).
+    """
+
     def __init__(
         self,
         sector_map: dict[str, str] | None = None,

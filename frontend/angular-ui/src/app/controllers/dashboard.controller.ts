@@ -10,7 +10,7 @@ import { ForecastApiService } from '../services/forecast-api.service';
   standalone: true,
   imports: [CommonModule, FormsModule],
   templateUrl: '../views/dashboard.view.html',
-  styleUrl: '../views/dashboard.view.scss',
+  styleUrls: ['../views/dashboard.view.scss'],
 })
 export class DashboardControllerComponent {
   readonly availableIds = ['AAPL.US', 'MSFT.US', 'GOOG.US', 'AMZN.US', 'META.US'];

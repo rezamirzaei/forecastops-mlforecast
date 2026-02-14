@@ -2,7 +2,27 @@
 
 End-to-end forecasting platform using real-world financial time-series data, `mlforecast`, FastAPI, Angular (MVC-style), Docker, notebooks, and CI/CD.
 
-## What this project includes
+## Why MLForecast?
+
+**MLForecast** is the ideal choice for this project because it solves key challenges in production time-series forecasting:
+
+| Challenge | MLForecast Solution |
+|-----------|-------------------|
+| **Multiple models to compare** | Train LinearRegression, ElasticNet, RandomForest, ExtraTrees, HistGradientBoosting, LightGBM, and XGBoost in a single `fit()` call |
+| **Feature engineering complexity** | Built-in lag transforms (`RollingMean`, `ExpandingStd`, `ExponentiallyWeightedMean`, `SeasonalRollingMean`) with automatic naming |
+| **Cross-validation for time-series** | Native `cross_validation()` with proper temporal splits, refitting, and callbacks |
+| **Prediction intervals** | Conformal prediction intervals out-of-the-box with `PredictionIntervals` |
+| **Performance at scale** | Multi-threaded feature computation, NumPy backend optimization |
+| **Target preprocessing** | `Differences` and `LocalStandardScaler` target transforms handled automatically |
+| **Model persistence** | Simple `save()`/`load()` for deployment |
+
+### Compared to Alternatives
+
+- **Prophet**: Single-model, slower on many series, limited ML model support
+- **statsforecast**: Great for statistical models, but MLForecast is better for ML ensembles
+- **Manual sklearn pipelines**: Require custom lag feature code, CV logic, and multi-model orchestration
+
+## What This Project Includes
 
 - Real data download from `stooq.com` (multiple tickers).
 - Clean, reusable Python package under `src/`.

@@ -930,7 +930,6 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
-    { name = "ipykernel" },
     { name = "lightgbm" },
     { name = "mlforecast" },
     { name = "numpy" },
@@ -950,6 +949,7 @@ dependencies = [
 [package.optional-dependencies]
 dev = [
     { name = "httpx" },
+    { name = "ipykernel" },
     { name = "nbformat" },
     { name = "pytest" },
     { name = "pytest-cov" },
@@ -960,7 +960,7 @@ dev = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115.11" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.28.1" },
-    { name = "ipykernel", specifier = ">=7.2.0" },
+    { name = "ipykernel", marker = "extra == 'dev'", specifier = ">=7.2.0" },
     { name = "lightgbm", specifier = ">=4.6.0" },
     { name = "mlforecast", specifier = ">=1.0.2" },
     { name = "nbformat", marker = "extra == 'dev'", specifier = ">=5.10.4" },

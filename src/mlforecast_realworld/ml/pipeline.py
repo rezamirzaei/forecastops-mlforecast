@@ -1,3 +1,19 @@
+"""
+Forecasting pipeline orchestration.
+
+This module provides the ForecastPipeline class which orchestrates the end-to-end
+ML forecasting workflow:
+- Data download and preparation
+- Model training with MLForecast
+- Cross-validation and evaluation
+- Prediction and model persistence
+
+Example:
+    >>> pipeline = ForecastPipeline()
+    >>> pipeline.prepare_training_data(download=True)
+    >>> pipeline.fit()
+    >>> predictions = pipeline.predict(horizon=14, ids=["AAPL.US"])
+"""
 from __future__ import annotations
 
 import warnings
@@ -19,7 +35,16 @@ from mlforecast_realworld.ml.factory import build_mlforecast
 from mlforecast_realworld.utils.io import ensure_directory, load_parquet, save_json, save_parquet
 
 
-def before_predict_cleanup(features):
+def before_predict_cleanup(features: np.ndarray | pd.DataFrame) -> np.ndarray | pd.DataFrame:
+    """
+    Clean up feature matrix before prediction by replacing NaN values.
+
+    Args:
+        features: Feature matrix as NumPy array or DataFrame.
+
+    Returns:
+        Cleaned feature matrix with NaN replaced by 0.0.
+    """
     if isinstance(features, np.ndarray):
         return np.nan_to_num(features, nan=0.0)
     cleaned = features.copy()
@@ -28,7 +53,16 @@ def before_predict_cleanup(features):
     return cleaned
 
 
-def after_predict_clip(values):
+def after_predict_clip(values: pd.Series | pd.DataFrame | np.ndarray) -> Any:
+    """
+    Clip prediction values to ensure non-negative outputs.
+
+    Args:
+        values: Prediction values to clip.
+
+    Returns:
+        Values clipped to minimum of 0.
+    """
     if isinstance(values, pd.Series):
         return values.clip(lower=0)
     if isinstance(values, pd.DataFrame):
@@ -39,6 +73,25 @@ def after_predict_clip(values):
 
 
 class ForecastPipeline:
+    """
+    End-to-end ML forecasting pipeline using MLForecast.
+
+    This class orchestrates the complete forecasting workflow including data
+    preparation, model training, cross-validation, prediction, and persistence.
+
+    Attributes:
+        settings: Application settings containing paths and model configuration.
+        forecaster: Trained MLForecast instance (None until fit is called).
+        training_frame: Prepared training DataFrame.
+        intervals_enabled: Whether prediction intervals are available.
+
+    Example:
+        >>> pipeline = ForecastPipeline()
+        >>> pipeline.prepare_training_data(download=True)
+        >>> fitted_values = pipeline.fit()
+        >>> predictions = pipeline.predict(horizon=14, ids=["AAPL.US"])
+    """
+
     def __init__(self, settings: AppSettings | None = None) -> None:
         self.settings = settings or get_settings()
         self.data_engineer = MarketDataEngineer()
