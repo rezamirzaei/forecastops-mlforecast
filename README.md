@@ -89,7 +89,10 @@ npm start
 
 - `GET /health`
 - `POST /pipeline/run?download=true|false`
+- `GET /pipeline/metrics?run_if_missing=true|false`
 - `POST /forecast`
+
+Call `POST /pipeline/run` before `POST /forecast` to ensure model artifacts are trained and persisted.
 
 Example request to `/forecast`:
 
@@ -126,4 +129,3 @@ Stages:
 1. Backend lint + tests.
 2. Frontend dependency install + production build.
 3. Docker image builds for backend and frontend.
-

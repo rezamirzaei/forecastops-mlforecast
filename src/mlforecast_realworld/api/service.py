@@ -6,6 +6,7 @@ import pandas as pd
 
 from mlforecast_realworld.ml.pipeline import ForecastPipeline
 from mlforecast_realworld.schemas.records import (
+    AccuracyMetric,
     ForecastRequest,
     PipelineSummary,
     forecast_records_from_frame,
@@ -44,6 +45,15 @@ class ForecastService:
         model_cols = self._prediction_model_columns(preds)
         forecast_records = forecast_records_from_frame(preds, model_cols)
         return [record.model_dump() for record in forecast_records]
+
+    def get_metrics(
+        self, run_if_missing: bool = True, download: bool = False
+    ) -> list[dict[str, Any]]:
+        cv_summary = self.pipeline.get_cv_summary(run_if_missing=run_if_missing, download=download)
+        metrics = [
+            AccuracyMetric(**row).model_dump() for row in cv_summary.to_dict(orient="records")
+        ]
+        return metrics
 
     @staticmethod
     def _prediction_model_columns(preds: pd.DataFrame) -> list[str]:

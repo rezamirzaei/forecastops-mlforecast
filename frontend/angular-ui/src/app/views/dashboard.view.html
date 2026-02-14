@@ -8,6 +8,9 @@
     <button type="button" (click)="runPipeline()" [disabled]="isRunningPipeline">
       {{ isRunningPipeline ? 'Running Pipeline...' : 'Run Pipeline' }}
     </button>
+    <button type="button" (click)="loadMetrics(true)" [disabled]="isLoadingMetrics">
+      {{ isLoadingMetrics ? 'Loading Metrics...' : 'Refresh Metrics' }}
+    </button>
 
     <div class="forecast-form">
       <label>
@@ -27,7 +30,7 @@
         </select>
       </label>
 
-      <button type="button" (click)="runForecast()" [disabled]="isForecasting">
+      <button type="button" (click)="runForecast()" [disabled]="isForecasting || !summary">
         {{ isForecasting ? 'Forecasting...' : 'Forecast' }}
       </button>
     </div>
@@ -78,6 +81,26 @@
           <td>{{ row.ds | date:'yyyy-MM-dd' }}</td>
           <td>{{ row.model_name }}</td>
           <td>{{ row.value | number:'1.2-2' }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="panel results" *ngIf="metrics.length > 0">
+    <h2>Model Accuracy (Cross-Validation)</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Model</th>
+          <th>sMAPE</th>
+          <th>WAPE</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let metric of metrics">
+          <td>{{ metric.model }}</td>
+          <td>{{ metric.smape | number:'1.2-2' }}</td>
+          <td>{{ metric.wape | number:'1.2-2' }}</td>
         </tr>
       </tbody>
     </table>

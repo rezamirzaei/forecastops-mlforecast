@@ -24,7 +24,6 @@ dependencies = [
   "pyarrow>=19.0.1",
   "python-dotenv>=1.0.1",
   "typer>=0.15.2",
-  "ipykernel>=7.2.0",
 ]
 
 [project.optional-dependencies]
@@ -33,6 +32,7 @@ dev = [
   "pytest-cov>=6.0.0",
   "httpx>=0.28.1",
   "ruff>=0.9.9",
+  "ipykernel>=7.2.0",
   "nbformat>=5.10.4",
 ]
 

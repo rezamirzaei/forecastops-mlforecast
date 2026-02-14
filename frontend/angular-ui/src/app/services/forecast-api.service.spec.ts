@@ -29,4 +29,14 @@ describe('ForecastApiService', () => {
     expect(req.request.method).toBe('POST');
     req.flush({ rows: 10, unique_series: 1, start: '', end: '', trained_models: [] });
   });
+
+  it('calls metrics endpoint', () => {
+    service.getMetrics(true).subscribe((resp) => {
+      expect(resp.count).toBe(1);
+    });
+
+    const req = httpMock.expectOne('/api/pipeline/metrics?run_if_missing=true');
+    expect(req.request.method).toBe('GET');
+    req.flush({ metrics: [{ model: 'lin_reg', smape: 1.2, wape: 1.1 }], best_model: 'lin_reg', count: 1 });
+  });
 });

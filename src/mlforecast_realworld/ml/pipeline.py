@@ -49,6 +49,7 @@ class ForecastPipeline:
         self.forecaster: MLForecast | None = None
         self.manual_forecaster: MLForecast | None = None
         self.training_frame: pd.DataFrame | None = None
+        self.latest_cv_summary: pd.DataFrame | None = None
         self.intervals_enabled = False
         self._ensure_dirs()
 
@@ -68,6 +69,14 @@ class ForecastPipeline:
     @property
     def report_path(self) -> Path:
         return self.settings.resolved_path(self.settings.paths.report_dir) / "pipeline_report.json"
+
+    @property
+    def run_summary_path(self) -> Path:
+        return self.settings.resolved_path(self.settings.paths.report_dir) / "run_summary.json"
+
+    @property
+    def cv_summary_path(self) -> Path:
+        return self.settings.resolved_path(self.settings.paths.report_dir) / "cv_summary.parquet"
 
     def _ensure_dirs(self) -> None:
         for directory in self.settings.paths.all_dirs():
@@ -126,10 +135,15 @@ class ForecastPipeline:
         manual_forecaster.fit_models(X, y)
         self.manual_forecaster = manual_forecaster
 
-        intervals = PredictionIntervals(
-            n_windows=2,
-            h=self.settings.forecast.horizon,
-            method="conformal_distribution",
+        use_intervals = self.settings.forecast.enable_prediction_intervals
+        intervals = (
+            PredictionIntervals(
+                n_windows=2,
+                h=self.settings.forecast.horizon,
+                method="conformal_distribution",
+            )
+            if use_intervals
+            else None
         )
         with warnings.catch_warnings():
             warnings.filterwarnings(
@@ -139,21 +153,7 @@ class ForecastPipeline:
                     "feature names"
                 ),
             )
-            try:
-                forecaster.fit(
-                    model_frame,
-                    static_features=static_cols,
-                    keep_last_n=self.settings.forecast.keep_last_n,
-                    prediction_intervals=intervals,
-                    fitted=True,
-                    as_numpy=True,
-                )
-                self.intervals_enabled = True
-            except ValueError as exc:
-                msg = str(exc)
-                if "missing inputs in X_df" not in msg:
-                    raise
-                # Real-world market calendars have holidays/gaps. Fallback keeps API responsive.
+            if intervals is None:
                 forecaster.fit(
                     model_frame,
                     static_features=static_cols,
@@ -162,6 +162,30 @@ class ForecastPipeline:
                     as_numpy=True,
                 )
                 self.intervals_enabled = False
+            else:
+                try:
+                    forecaster.fit(
+                        model_frame,
+                        static_features=static_cols,
+                        keep_last_n=self.settings.forecast.keep_last_n,
+                        prediction_intervals=intervals,
+                        fitted=True,
+                        as_numpy=True,
+                    )
+                    self.intervals_enabled = True
+                except ValueError as exc:
+                    msg = str(exc)
+                    if "missing inputs in X_df" not in msg:
+                        raise
+                    # Real-world market calendars have holidays/gaps. Fallback keeps API responsive.
+                    forecaster.fit(
+                        model_frame,
+                        static_features=static_cols,
+                        keep_last_n=self.settings.forecast.keep_last_n,
+                        fitted=True,
+                        as_numpy=True,
+                    )
+                    self.intervals_enabled = False
         self.forecaster = forecaster
         return forecaster.forecast_fitted_values()
 
@@ -173,10 +197,15 @@ class ForecastPipeline:
         if self.forecaster is None:
             self.fit(frame)
 
-        intervals = PredictionIntervals(
-            n_windows=2,
-            h=self.settings.forecast.horizon,
-            method="conformal_distribution",
+        use_intervals = self.settings.forecast.enable_prediction_intervals
+        intervals = (
+            PredictionIntervals(
+                n_windows=2,
+                h=self.settings.forecast.horizon,
+                method="conformal_distribution",
+            )
+            if use_intervals
+            else None
         )
         cv_forecaster = build_mlforecast(self.settings.forecast)
         with warnings.catch_warnings():
@@ -187,23 +216,46 @@ class ForecastPipeline:
                     "feature names"
                 ),
             )
-            cv_df = cv_forecaster.cross_validation(
-                model_frame,
-                n_windows=self.settings.forecast.cv_windows,
-                h=self.settings.forecast.horizon,
-                step_size=self.settings.forecast.cv_step_size,
-                static_features=["sector_code", "asset_class_code"],
-                keep_last_n=self.settings.forecast.keep_last_n,
-                refit=1,
-                fitted=True,
-                prediction_intervals=intervals,
-                level=self.settings.forecast.levels,
-                before_predict_callback=before_predict_cleanup,
-                after_predict_callback=after_predict_clip,
-                as_numpy=True,
-            )
+            try:
+                cv_df = cv_forecaster.cross_validation(
+                    model_frame,
+                    n_windows=self.settings.forecast.cv_windows,
+                    h=self.settings.forecast.horizon,
+                    step_size=self.settings.forecast.cv_step_size,
+                    static_features=["sector_code", "asset_class_code"],
+                    keep_last_n=self.settings.forecast.keep_last_n,
+                    refit=1,
+                    fitted=True,
+                    prediction_intervals=intervals,
+                    level=self.settings.forecast.levels if intervals is not None else None,
+                    before_predict_callback=before_predict_cleanup,
+                    after_predict_callback=after_predict_clip,
+                    as_numpy=True,
+                )
+            except ValueError as exc:
+                msg = str(exc)
+                if intervals is None or "missing inputs in X_df" not in msg:
+                    raise
+                # Some CV windows still hit sparse market calendars; rerun CV without intervals.
+                cv_df = cv_forecaster.cross_validation(
+                    model_frame,
+                    n_windows=self.settings.forecast.cv_windows,
+                    h=self.settings.forecast.horizon,
+                    step_size=self.settings.forecast.cv_step_size,
+                    static_features=["sector_code", "asset_class_code"],
+                    keep_last_n=self.settings.forecast.keep_last_n,
+                    refit=1,
+                    fitted=True,
+                    prediction_intervals=None,
+                    level=None,
+                    before_predict_callback=before_predict_cleanup,
+                    after_predict_callback=after_predict_clip,
+                    as_numpy=True,
+                )
+                self.intervals_enabled = False
         _ = cv_forecaster.cross_validation_fitted_values()
         summary = summarize_cv(cv_df)
+        self.latest_cv_summary = summary
         return cv_df, summary
 
     def forecast(
@@ -213,7 +265,14 @@ class ForecastPipeline:
         levels: list[int] | None = None,
     ) -> pd.DataFrame:
         if self.forecaster is None:
-            self.fit()
+            if self.model_path.exists():
+                self.load_model()
+                self._require_training_frame()
+                self.intervals_enabled = getattr(self.forecaster, "_cs_df", None) is not None
+            else:
+                raise ValueError(
+                    "Model not trained. Run /pipeline/run before requesting forecasts."
+                )
 
         frame = self._require_training_frame()
         h = horizon or self.settings.forecast.horizon
@@ -247,10 +306,13 @@ class ForecastPipeline:
             predictions = self.forecaster.predict(
                 h=h,
                 X_df=future_x,
-                ids=requested_ids,
                 level=predict_levels,
                 before_predict_callback=before_predict_cleanup,
                 after_predict_callback=after_predict_clip,
+            )
+        if ids:
+            predictions = predictions[predictions["unique_id"].isin(requested_ids)].reset_index(
+                drop=True
             )
         return predictions
 
@@ -328,11 +390,22 @@ class ForecastPipeline:
             "best_model": str(cv_summary.iloc[0]["model"]),
             "model_path": str(model_path),
         }
-        report_dir = self.settings.resolved_path(self.settings.paths.report_dir)
-        report_file = report_dir / "run_summary.json"
-        save_json(summary, report_file)
+        save_json(summary, self.run_summary_path)
+        save_parquet(cv_summary, self.cv_summary_path)
         return {
             "summary": summary,
             "cv_summary": cv_summary,
             "forecasts": forecasts,
         }
+
+    def get_cv_summary(self, run_if_missing: bool = False, download: bool = False) -> pd.DataFrame:
+        if self.latest_cv_summary is not None:
+            return self.latest_cv_summary.copy()
+        if self.cv_summary_path.exists():
+            return load_parquet(self.cv_summary_path)
+        if run_if_missing:
+            frame = self.prepare_training_data(download=download)
+            _, cv_summary = self.cross_validate(frame)
+            save_parquet(cv_summary, self.cv_summary_path)
+            return cv_summary
+        raise RuntimeError("CV summary not found. Run /pipeline/run first.")

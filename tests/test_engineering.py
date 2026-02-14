@@ -75,6 +75,20 @@ def test_holdout_split(sample_training_frame: pd.DataFrame) -> None:
     assert len(test) == 5 * sample_training_frame["unique_id"].nunique()
 
 
+def test_regularizes_missing_business_dates(sample_raw_frame: pd.DataFrame) -> None:
+    engineer = MarketDataEngineer()
+    broken = sample_raw_frame[
+        ~(
+            (sample_raw_frame["unique_id"] == "AAPL.US")
+            & (sample_raw_frame["ds"] == sample_raw_frame["ds"].iloc[5])
+        )
+    ].copy()
+    training = engineer.build_training_frame(broken)
+    grp = training[training["unique_id"] == "AAPL.US"].sort_values("ds")
+    expected = len(pd.date_range(grp["ds"].min(), grp["ds"].max(), freq="B"))
+    assert len(grp) == expected
+
+
 def test_build_training_frame_invalid_row_raises(sample_raw_frame: pd.DataFrame) -> None:
     engineer = MarketDataEngineer()
     broken = sample_raw_frame.copy()

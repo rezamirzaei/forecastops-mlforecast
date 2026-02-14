@@ -30,9 +30,11 @@ class MarketDataEngineer:
         self,
         sector_map: dict[str, str] | None = None,
         asset_class: str = "equity",
+        freq: str = "B",
     ) -> None:
         self.sector_map = sector_map or DEFAULT_SECTOR_MAP
         self.asset_class = asset_class
+        self.freq = freq
 
     def normalize_market_frame(self, raw_df: pd.DataFrame) -> pd.DataFrame:
         frame = raw_df.copy()
@@ -43,6 +45,7 @@ class MarketDataEngineer:
         frame = frame.dropna(subset=["ds", "open", "high", "low", "close", "volume"])
         frame = frame.loc[(frame["close"] > 0) & (frame["volume"] > 0)].copy()
         frame = frame.drop_duplicates(subset=["unique_id", "ds"]).sort_values(["unique_id", "ds"])
+        frame = self._regularize_frequency(frame)
         frame["y"] = frame["close"]
         frame["sector"] = frame["unique_id"].map(self.sector_map).fillna("Unknown")
         frame["asset_class"] = self.asset_class
@@ -53,6 +56,22 @@ class MarketDataEngineer:
         max_volume = frame.groupby("unique_id")["volume"].transform("max").replace(0, 1)
         frame["sample_weight"] = (frame["volume"] / max_volume).clip(lower=0.05)
         return frame.reset_index(drop=True)
+
+    def _regularize_frequency(self, frame: pd.DataFrame) -> pd.DataFrame:
+        parts: list[pd.DataFrame] = []
+        for unique_id, grp in frame.groupby("unique_id", sort=True):
+            grp = grp.sort_values("ds").set_index("ds")
+            full_dates = pd.date_range(grp.index.min(), grp.index.max(), freq=self.freq)
+            reindexed = grp.reindex(full_dates)
+            reindexed["unique_id"] = unique_id
+            for col in ["open", "high", "low", "close"]:
+                reindexed[col] = reindexed[col].ffill().bfill()
+            reindexed["volume"] = (
+                reindexed["volume"].ffill().bfill().fillna(1).clip(lower=1).round()
+            )
+            reindexed = reindexed.reset_index().rename(columns={"index": "ds"})
+            parts.append(reindexed[["unique_id", "ds", "open", "high", "low", "close", "volume"]])
+        return pd.concat(parts, ignore_index=True)
 
     def add_calendar_features(self, frame: pd.DataFrame) -> pd.DataFrame:
         features = frame.copy()

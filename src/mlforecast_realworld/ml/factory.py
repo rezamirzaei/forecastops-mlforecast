@@ -41,13 +41,13 @@ def default_models(random_state: int) -> dict[str, Any]:
     return {
         "lin_reg": LinearRegression(),
         "rf": RandomForestRegressor(
-            n_estimators=200,
+            n_estimators=100,
             random_state=random_state,
             n_jobs=-1,
-            max_depth=9,
+            max_depth=8,
         ),
         "lgbm": LGBMRegressor(
-            n_estimators=250,
+            n_estimators=120,
             learning_rate=0.05,
             random_state=random_state,
             objective="regression",
@@ -55,13 +55,13 @@ def default_models(random_state: int) -> dict[str, Any]:
             verbose=-1,
         ),
         "xgb": XGBRegressor(
-            n_estimators=300,
+            n_estimators=120,
             learning_rate=0.05,
-            max_depth=6,
+            max_depth=5,
             subsample=0.9,
             colsample_bytree=0.9,
             random_state=random_state,
-            n_jobs=1,
+            n_jobs=2,
             objective="reg:squarederror",
             verbosity=0,
         ),

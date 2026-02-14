@@ -22,6 +22,12 @@ def create_app() -> FastAPI:
     def run_pipeline(download: bool = True) -> PipelineSummary:
         return service.run_pipeline(download=download)
 
+    @app.get("/pipeline/metrics")
+    def pipeline_metrics(run_if_missing: bool = True, download: bool = False) -> dict[str, object]:
+        metrics = service.get_metrics(run_if_missing=run_if_missing, download=download)
+        best = metrics[0]["model"] if metrics else None
+        return {"metrics": metrics, "best_model": best, "count": len(metrics)}
+
     @app.post("/forecast")
     def forecast(request: ForecastRequest) -> dict[str, object]:
         try:

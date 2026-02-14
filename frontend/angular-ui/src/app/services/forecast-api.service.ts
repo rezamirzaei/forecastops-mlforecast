@@ -5,6 +5,7 @@ import { Observable } from 'rxjs';
 import {
   ForecastRequest,
   ForecastResponse,
+  MetricsResponse,
   PipelineSummary,
 } from '../models/forecast.models';
 
@@ -14,9 +15,14 @@ export class ForecastApiService {
 
   constructor(private readonly http: HttpClient) {}
 
-  runPipeline(download = true): Observable<PipelineSummary> {
+  runPipeline(download = false): Observable<PipelineSummary> {
     const params = new HttpParams().set('download', String(download));
     return this.http.post<PipelineSummary>(`${this.baseUrl}/pipeline/run`, null, { params });
+  }
+
+  getMetrics(runIfMissing = true): Observable<MetricsResponse> {
+    const params = new HttpParams().set('run_if_missing', String(runIfMissing));
+    return this.http.get<MetricsResponse>(`${this.baseUrl}/pipeline/metrics`, { params });
   }
 
   forecast(request: ForecastRequest): Observable<ForecastResponse> {

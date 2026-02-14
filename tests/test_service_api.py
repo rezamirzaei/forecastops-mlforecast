@@ -34,6 +34,9 @@ class DummyPipeline:
             }
         )
 
+    def get_cv_summary(self, run_if_missing: bool = False, download: bool = False):  # noqa: ARG002
+        return pd.DataFrame([{"model": "lin_reg", "smape": 1.23, "wape": 1.11}])
+
 
 def test_forecast_service_run_pipeline() -> None:
     service = ForecastService(pipeline=DummyPipeline())
@@ -47,6 +50,13 @@ def test_forecast_service_get_forecast() -> None:
     records = service.get_forecast(ForecastRequest(horizon=1))
     assert len(records) == 1
     assert records[0]["model_name"] == "lin_reg"
+
+
+def test_forecast_service_get_metrics() -> None:
+    service = ForecastService(pipeline=DummyPipeline())
+    metrics = service.get_metrics(run_if_missing=True)
+    assert len(metrics) == 1
+    assert metrics[0]["model"] == "lin_reg"
 
 
 def test_api_endpoints(monkeypatch) -> None:
@@ -74,12 +84,18 @@ def test_api_endpoints(monkeypatch) -> None:
                 }
             ]
 
+        def get_metrics(self, run_if_missing: bool = True, download: bool = False):  # noqa: ARG002
+            return [{"model": "lin_reg", "smape": 1.2, "wape": 1.1}]
+
     monkeypatch.setattr(main_mod, "ForecastService", lambda: DummyService())
     app = create_app()
     client = TestClient(app)
 
     assert client.get("/health").status_code == 200
     assert client.post("/pipeline/run", params={"download": "false"}).status_code == 200
+    metrics = client.get("/pipeline/metrics", params={"run_if_missing": "true"})
+    assert metrics.status_code == 200
+    assert metrics.json()["best_model"] == "lin_reg"
     resp = client.post("/forecast", json={"horizon": 1, "ids": ["AAPL.US"], "levels": [80]})
     assert resp.status_code == 200
     assert resp.json()["count"] == 1

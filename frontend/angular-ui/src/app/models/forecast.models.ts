@@ -23,3 +23,15 @@ export interface ForecastResponse {
   records: ForecastRecord[];
   count: number;
 }
+
+export interface AccuracyMetric {
+  model: string;
+  smape: number;
+  wape: number;
+}
+
+export interface MetricsResponse {
+  metrics: AccuracyMetric[];
+  best_model: string | null;
+  count: number;
+}

@@ -8,6 +8,7 @@ from sklearn.linear_model import LinearRegression
 
 from mlforecast_realworld.config import AppSettings
 from mlforecast_realworld.ml import factory as factory_mod
+from mlforecast_realworld.ml import pipeline as pipeline_mod
 from mlforecast_realworld.ml.pipeline import (
     ForecastPipeline,
     after_predict_clip,
@@ -88,3 +89,87 @@ def test_update_requires_fit(tmp_path: Path) -> None:
     pipeline = ForecastPipeline(settings=_test_settings(tmp_path))
     with pytest.raises(RuntimeError):
         pipeline.update_with_latest(pd.DataFrame())
+
+
+def test_cross_validate_fallbacks_when_intervals_need_missing_xdf(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    sample_raw_frame: pd.DataFrame,
+) -> None:
+    settings = _test_settings(tmp_path)
+    settings.forecast.enable_prediction_intervals = True
+    pipeline = ForecastPipeline(settings=settings)
+    frame = pipeline.data_engineer.build_training_frame(sample_raw_frame)
+    pipeline.training_frame = frame
+    pipeline.forecaster = object()
+
+    class StubCVForecaster:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.prediction_intervals: list[object | None] = []
+
+        def cross_validation(self, *_args, **kwargs):
+            self.calls += 1
+            self.prediction_intervals.append(kwargs.get("prediction_intervals"))
+            if self.calls == 1:
+                raise ValueError("Found missing inputs in X_df. It should have one row per id.")
+            return pd.DataFrame(
+                {
+                    "unique_id": ["AAPL.US", "MSFT.US"],
+                    "ds": [pd.Timestamp("2024-01-02"), pd.Timestamp("2024-01-02")],
+                    "cutoff": [pd.Timestamp("2024-01-01"), pd.Timestamp("2024-01-01")],
+                    "y": [100.0, 200.0],
+                    "lin_reg": [99.0, 198.0],
+                }
+            )
+
+        @staticmethod
+        def cross_validation_fitted_values() -> pd.DataFrame:
+            return pd.DataFrame()
+
+    stub = StubCVForecaster()
+    monkeypatch.setattr(pipeline_mod, "build_mlforecast", lambda _cfg: stub)
+
+    cv_df, summary = pipeline.cross_validate(frame)
+
+    assert stub.calls == 2
+    assert stub.prediction_intervals[0] is not None
+    assert stub.prediction_intervals[1] is None
+    assert pipeline.intervals_enabled is False
+    assert not cv_df.empty
+    assert not summary.empty
+
+
+def test_forecast_filters_ids_without_passing_subset_to_predict(
+    tmp_path: Path,
+    sample_raw_frame: pd.DataFrame,
+) -> None:
+    pipeline = ForecastPipeline(settings=_test_settings(tmp_path))
+    frame = pipeline.data_engineer.build_training_frame(sample_raw_frame)
+    pipeline.training_frame = frame
+
+    class StubForecaster:
+        @staticmethod
+        def get_missing_future(h: int, X_df: pd.DataFrame) -> pd.DataFrame:
+            return pd.DataFrame(columns=X_df.columns)
+
+        @staticmethod
+        def make_future_dataframe(h: int) -> pd.DataFrame:
+            return pd.DataFrame({"h": [h]})
+
+        @staticmethod
+        def predict(*_args, **kwargs) -> pd.DataFrame:
+            assert kwargs.get("ids") is None
+            return pd.DataFrame(
+                {
+                    "unique_id": ["AAPL.US", "MSFT.US"],
+                    "ds": [pd.Timestamp("2024-01-02"), pd.Timestamp("2024-01-02")],
+                    "lin_reg": [100.0, 200.0],
+                }
+            )
+
+    pipeline.forecaster = StubForecaster()  # type: ignore[assignment]
+
+    preds = pipeline.forecast(horizon=1, ids=["AAPL.US"])
+
+    assert preds["unique_id"].tolist() == ["AAPL.US"]

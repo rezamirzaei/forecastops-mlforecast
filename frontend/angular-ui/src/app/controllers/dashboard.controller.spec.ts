@@ -6,7 +6,21 @@ import { ForecastApiService } from '../services/forecast-api.service';
 
 class MockApiService {
   runPipeline() {
-    return of({ rows: 100, unique_series: 2, start: '2024-01-01', end: '2024-01-10', trained_models: ['lin_reg'] });
+    return of({
+      rows: 100,
+      unique_series: 2,
+      start: '2024-01-01',
+      end: '2024-01-10',
+      trained_models: ['lin_reg'],
+    });
+  }
+
+  getMetrics() {
+    return of({
+      metrics: [{ model: 'lin_reg', smape: 10.2, wape: 9.1 }],
+      best_model: 'lin_reg',
+      count: 1,
+    });
   }
 
   forecast() {
@@ -36,9 +50,17 @@ describe('DashboardControllerComponent', () => {
   it('runs pipeline and stores summary', () => {
     component.runPipeline();
     expect(component.summary?.rows).toBe(100);
+    expect(component.metrics.length).toBe(1);
   });
 
   it('runs forecast and stores records', () => {
+    component.summary = {
+      rows: 100,
+      unique_series: 2,
+      start: '2024-01-01',
+      end: '2024-01-10',
+      trained_models: ['lin_reg'],
+    };
     component.runForecast();
     expect(component.records.length).toBe(1);
   });

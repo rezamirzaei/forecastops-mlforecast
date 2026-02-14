@@ -49,6 +49,12 @@ class PipelineSummary(BaseModel):
     trained_models: list[str]
 
 
+class AccuracyMetric(BaseModel):
+    model: str
+    smape: float
+    wape: float
+
+
 class ForecastRecord(BaseModel):
     unique_id: str
     ds: datetime

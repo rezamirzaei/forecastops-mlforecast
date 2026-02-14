@@ -13,7 +13,7 @@ class DataSourceSettings(BaseModel):
     tickers: list[str] = Field(
         default_factory=lambda: ["aapl.us", "msft.us", "goog.us", "amzn.us", "meta.us"]
     )
-    start_date: date = date(2015, 1, 1)
+    start_date: date = date(2019, 1, 1)
     end_date: date | None = None
     interval: Literal["d", "w", "m"] = "d"
     base_url: HttpUrl = "https://stooq.com/q/d/l/"
@@ -34,10 +34,11 @@ class ForecastSettings(BaseModel):
     freq: str = "B"
     horizon: PositiveInt = 14
     lags: list[PositiveInt] = Field(default_factory=lambda: [1, 2, 3, 5, 7, 14, 21])
-    cv_windows: PositiveInt = 3
+    cv_windows: PositiveInt = 2
     cv_step_size: PositiveInt = 7
     levels: list[int] = Field(default_factory=lambda: [80, 95])
-    keep_last_n: PositiveInt = 650
+    keep_last_n: PositiveInt = 450
+    enable_prediction_intervals: bool = False
     num_threads: PositiveInt = 1
     random_state: int = 42
 
