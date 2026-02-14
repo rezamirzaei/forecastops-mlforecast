@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mlforecast-realworld-project"
+version = "0.1.0"
+description = "Production-style MLForecast project with real-world data"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "pandas>=2.2.3",
+  "numpy>=1.26.4",
+  "requests>=2.32.3",
+  "pydantic>=2.10.6",
+  "pydantic-settings>=2.7.1",
+  "mlforecast>=1.0.2",
+  "scikit-learn>=1.5.2",
+  "lightgbm>=4.6.0",
+  "xgboost>=2.1.4",
+  "utilsforecast>=0.2.10",
+  "fastapi>=0.115.11",
+  "uvicorn[standard]>=0.34.0",
+  "pyarrow>=19.0.1",
+  "python-dotenv>=1.0.1",
+  "typer>=0.15.2",
+  "ipykernel>=7.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3.5",
+  "pytest-cov>=6.0.0",
+  "httpx>=0.28.1",
+  "ruff>=0.9.9",
+  "nbformat>=5.10.4",
+]
+
+[project.scripts]
+forecast-cli = "mlforecast_realworld.cli:app"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

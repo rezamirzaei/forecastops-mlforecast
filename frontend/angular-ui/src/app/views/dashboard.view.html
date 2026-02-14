@@ -1,0 +1,85 @@
+<section class="dashboard-shell">
+  <header class="hero">
+    <h1>MLForecast Control Room</h1>
+    <p>Run the full data+ML pipeline and inspect real-world forecasts from one interface.</p>
+  </header>
+
+  <section class="panel actions">
+    <button type="button" (click)="runPipeline()" [disabled]="isRunningPipeline">
+      {{ isRunningPipeline ? 'Running Pipeline...' : 'Run Pipeline' }}
+    </button>
+
+    <div class="forecast-form">
+      <label>
+        Horizon
+        <input type="number" min="1" [(ngModel)]="horizon" />
+      </label>
+
+      <label>
+        Levels (comma-separated)
+        <input type="text" [(ngModel)]="levels" placeholder="80,95" />
+      </label>
+
+      <label>
+        Series
+        <select multiple [(ngModel)]="selectedIds">
+          <option *ngFor="let id of availableIds" [value]="id">{{ id }}</option>
+        </select>
+      </label>
+
+      <button type="button" (click)="runForecast()" [disabled]="isForecasting">
+        {{ isForecasting ? 'Forecasting...' : 'Forecast' }}
+      </button>
+    </div>
+  </section>
+
+  <p class="error" *ngIf="errorMessage">{{ errorMessage }}</p>
+
+  <section class="panel summary" *ngIf="summary">
+    <h2>Pipeline Summary</h2>
+    <div class="summary-grid">
+      <article>
+        <span>Rows</span>
+        <strong>{{ summary.rows }}</strong>
+      </article>
+      <article>
+        <span>Series</span>
+        <strong>{{ summary.unique_series }}</strong>
+      </article>
+      <article>
+        <span>Start</span>
+        <strong>{{ summary.start | date:'mediumDate' }}</strong>
+      </article>
+      <article>
+        <span>End</span>
+        <strong>{{ summary.end | date:'mediumDate' }}</strong>
+      </article>
+      <article>
+        <span>Models</span>
+        <strong>{{ summary.trained_models.join(', ') }}</strong>
+      </article>
+    </div>
+  </section>
+
+  <section class="panel results" *ngIf="records.length > 0">
+    <h2>Forecast Records</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Series</th>
+          <th>Date</th>
+          <th>Model</th>
+          <th>Value</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let row of records">
+          <td>{{ row.unique_id }}</td>
+          <td>{{ row.ds | date:'yyyy-MM-dd' }}</td>
+          <td>{{ row.model_name }}</td>
+          <td>{{ row.value | number:'1.2-2' }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+</section>

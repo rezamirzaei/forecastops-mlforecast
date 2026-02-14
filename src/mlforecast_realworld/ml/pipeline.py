@@ -1,0 +1,338 @@
+from __future__ import annotations
+
+import warnings
+from dataclasses import asdict
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+import pandas as pd
+from mlforecast import MLForecast
+from mlforecast.lgb_cv import LightGBMCV
+from mlforecast.utils import PredictionIntervals
+
+from mlforecast_realworld.config import AppSettings, get_settings
+from mlforecast_realworld.data.downloader import StooqDownloader
+from mlforecast_realworld.data.engineering import MarketDataEngineer
+from mlforecast_realworld.ml.evaluation import summarize_cv
+from mlforecast_realworld.ml.factory import build_mlforecast
+from mlforecast_realworld.utils.io import ensure_directory, load_parquet, save_json, save_parquet
+
+
+def before_predict_cleanup(features):
+    if isinstance(features, np.ndarray):
+        return np.nan_to_num(features, nan=0.0)
+    cleaned = features.copy()
+    numeric_cols = cleaned.select_dtypes(include=["number"]).columns
+    cleaned[numeric_cols] = cleaned[numeric_cols].fillna(0.0)
+    return cleaned
+
+
+def after_predict_clip(values):
+    if isinstance(values, pd.Series):
+        return values.clip(lower=0)
+    if isinstance(values, pd.DataFrame):
+        return values.clip(lower=0)
+    if isinstance(values, np.ndarray):
+        return np.clip(values, a_min=0, a_max=None)
+    return values
+
+
+class ForecastPipeline:
+    def __init__(self, settings: AppSettings | None = None) -> None:
+        self.settings = settings or get_settings()
+        self.data_engineer = MarketDataEngineer()
+        self.downloader = StooqDownloader(
+            settings=self.settings.data,
+            output_dir=self.settings.resolved_path(self.settings.paths.raw_data_dir),
+        )
+        self.forecaster: MLForecast | None = None
+        self.manual_forecaster: MLForecast | None = None
+        self.training_frame: pd.DataFrame | None = None
+        self.intervals_enabled = False
+        self._ensure_dirs()
+
+    @property
+    def raw_data_path(self) -> Path:
+        return self.settings.resolved_path(self.settings.paths.raw_data_dir) / "market_raw.parquet"
+
+    @property
+    def processed_data_path(self) -> Path:
+        resolved = self.settings.resolved_path(self.settings.paths.processed_data_dir)
+        return resolved / "market_training.parquet"
+
+    @property
+    def model_path(self) -> Path:
+        return self.settings.resolved_path(self.settings.paths.model_dir) / "mlforecast_model"
+
+    @property
+    def report_path(self) -> Path:
+        return self.settings.resolved_path(self.settings.paths.report_dir) / "pipeline_report.json"
+
+    def _ensure_dirs(self) -> None:
+        for directory in self.settings.paths.all_dirs():
+            ensure_directory(self.settings.resolved_path(directory))
+
+    def prepare_training_data(self, download: bool = True) -> pd.DataFrame:
+        if download or not self.raw_data_path.exists():
+            raw = self.downloader.download_all()
+            self.downloader.save_raw(raw)
+        else:
+            raw = load_parquet(self.raw_data_path)
+
+        training = self.data_engineer.build_training_frame(raw)
+        save_parquet(training, self.processed_data_path)
+        report = asdict(self.data_engineer.quality_report(training))
+        save_json(report, self.report_path)
+        self.training_frame = training
+        return training
+
+    def _require_training_frame(self) -> pd.DataFrame:
+        if self.training_frame is not None:
+            return self.training_frame
+        if self.processed_data_path.exists():
+            self.training_frame = load_parquet(self.processed_data_path)
+            return self.training_frame
+        raise RuntimeError("training data not prepared")
+
+    def fit(self, training_frame: pd.DataFrame | None = None) -> pd.DataFrame:
+        frame = training_frame if training_frame is not None else self._require_training_frame()
+        model_frame = self._model_frame(frame)
+        static_cols = ["sector_code", "asset_class_code"]
+
+        forecaster = build_mlforecast(self.settings.forecast)
+
+        # Feature matrix inspection for data engineering/debugging.
+        forecaster.preprocess(
+            model_frame,
+            static_features=static_cols,
+            keep_last_n=self.settings.forecast.keep_last_n,
+        )
+        X, y = forecaster.preprocess(
+            model_frame,
+            static_features=static_cols,
+            keep_last_n=self.settings.forecast.keep_last_n,
+            return_X_y=True,
+            as_numpy=True,
+        )
+
+        manual_forecaster = build_mlforecast(self.settings.forecast)
+        manual_forecaster.preprocess(
+            model_frame,
+            static_features=static_cols,
+            keep_last_n=self.settings.forecast.keep_last_n,
+            as_numpy=True,
+        )
+        manual_forecaster.fit_models(X, y)
+        self.manual_forecaster = manual_forecaster
+
+        intervals = PredictionIntervals(
+            n_windows=2,
+            h=self.settings.forecast.horizon,
+            method="conformal_distribution",
+        )
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message=(
+                    "X does not have valid feature names, but LGBMRegressor was fitted with "
+                    "feature names"
+                ),
+            )
+            try:
+                forecaster.fit(
+                    model_frame,
+                    static_features=static_cols,
+                    keep_last_n=self.settings.forecast.keep_last_n,
+                    prediction_intervals=intervals,
+                    fitted=True,
+                    as_numpy=True,
+                )
+                self.intervals_enabled = True
+            except ValueError as exc:
+                msg = str(exc)
+                if "missing inputs in X_df" not in msg:
+                    raise
+                # Real-world market calendars have holidays/gaps. Fallback keeps API responsive.
+                forecaster.fit(
+                    model_frame,
+                    static_features=static_cols,
+                    keep_last_n=self.settings.forecast.keep_last_n,
+                    fitted=True,
+                    as_numpy=True,
+                )
+                self.intervals_enabled = False
+        self.forecaster = forecaster
+        return forecaster.forecast_fitted_values()
+
+    def cross_validate(
+        self, training_frame: pd.DataFrame | None = None
+    ) -> tuple[pd.DataFrame, pd.DataFrame]:
+        frame = training_frame if training_frame is not None else self._require_training_frame()
+        model_frame = self._model_frame(frame)
+        if self.forecaster is None:
+            self.fit(frame)
+
+        intervals = PredictionIntervals(
+            n_windows=2,
+            h=self.settings.forecast.horizon,
+            method="conformal_distribution",
+        )
+        cv_forecaster = build_mlforecast(self.settings.forecast)
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message=(
+                    "X does not have valid feature names, but LGBMRegressor was fitted with "
+                    "feature names"
+                ),
+            )
+            cv_df = cv_forecaster.cross_validation(
+                model_frame,
+                n_windows=self.settings.forecast.cv_windows,
+                h=self.settings.forecast.horizon,
+                step_size=self.settings.forecast.cv_step_size,
+                static_features=["sector_code", "asset_class_code"],
+                keep_last_n=self.settings.forecast.keep_last_n,
+                refit=1,
+                fitted=True,
+                prediction_intervals=intervals,
+                level=self.settings.forecast.levels,
+                before_predict_callback=before_predict_cleanup,
+                after_predict_callback=after_predict_clip,
+                as_numpy=True,
+            )
+        _ = cv_forecaster.cross_validation_fitted_values()
+        summary = summarize_cv(cv_df)
+        return cv_df, summary
+
+    def forecast(
+        self,
+        horizon: int | None = None,
+        ids: list[str] | None = None,
+        levels: list[int] | None = None,
+    ) -> pd.DataFrame:
+        if self.forecaster is None:
+            self.fit()
+
+        frame = self._require_training_frame()
+        h = horizon or self.settings.forecast.horizon
+        all_ids = sorted(frame["unique_id"].unique().tolist())
+        requested_ids = ids or all_ids
+        last_timestamp = pd.Timestamp(frame["ds"].max())
+
+        future_x = self.data_engineer.build_future_exogenous(
+            ids=all_ids,
+            last_timestamp=last_timestamp,
+            horizon=h,
+            freq=self.settings.forecast.freq,
+        )
+        missing = self.forecaster.get_missing_future(h=h, X_df=future_x)
+        if not missing.empty:
+            raise ValueError(f"missing future exogenous rows: {len(missing)}")
+
+        _ = self.forecaster.make_future_dataframe(h=h)
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message=(
+                    "X does not have valid feature names, but LGBMRegressor was fitted with "
+                    "feature names"
+                ),
+            )
+            if self.intervals_enabled:
+                predict_levels = levels or self.settings.forecast.levels
+            else:
+                predict_levels = None
+            predictions = self.forecaster.predict(
+                h=h,
+                X_df=future_x,
+                ids=requested_ids,
+                level=predict_levels,
+                before_predict_callback=before_predict_cleanup,
+                after_predict_callback=after_predict_clip,
+            )
+        return predictions
+
+    def update_with_latest(self, new_observations: pd.DataFrame) -> None:
+        if self.forecaster is None:
+            raise RuntimeError("forecaster is not fitted")
+        self.forecaster.update(new_observations)
+
+    def save_model(self) -> Path:
+        if self.forecaster is None:
+            raise RuntimeError("forecaster is not fitted")
+        model_path = self.model_path
+        ensure_directory(model_path.parent)
+        self.forecaster.save(model_path)
+        return model_path
+
+    def load_model(self) -> MLForecast:
+        self.forecaster = MLForecast.load(self.model_path)
+        return self.forecaster
+
+    def run_lightgbm_cv(self, training_frame: pd.DataFrame | None = None) -> pd.DataFrame:
+        frame = training_frame if training_frame is not None else self._require_training_frame()
+        model_frame = self._model_frame(frame)
+        lgb_cv = LightGBMCV(
+            freq=self.settings.forecast.freq,
+            lags=self.settings.forecast.lags,
+            date_features=["dayofweek", "month", "is_month_end"],
+            num_threads=self.settings.forecast.num_threads,
+        )
+        lgb_cv.fit(
+            model_frame,
+            n_windows=2,
+            h=min(5, self.settings.forecast.horizon),
+            num_iterations=25,
+            static_features=["sector_code", "asset_class_code"],
+            metric="mape",
+            verbose_eval=False,
+            compute_cv_preds=False,
+            keep_last_n=self.settings.forecast.keep_last_n,
+        )
+        cv_forecaster = MLForecast.from_cv(lgb_cv)
+        return cv_forecaster.predict(h=min(5, self.settings.forecast.horizon))
+
+    @staticmethod
+    def _model_frame(frame: pd.DataFrame) -> pd.DataFrame:
+        cols = [
+            "unique_id",
+            "ds",
+            "y",
+            "sector_code",
+            "asset_class_code",
+            "is_weekend",
+            "is_month_start",
+            "is_month_end",
+            "week_of_year",
+            "month_sin",
+            "month_cos",
+        ]
+        existing_cols = [col for col in cols if col in frame.columns]
+        return frame[existing_cols].copy()
+
+    def run_full_pipeline(self, download: bool = True) -> dict[str, Any]:
+        frame = self.prepare_training_data(download=download)
+        fitted_values = self.fit(frame)
+        cv_df, cv_summary = self.cross_validate(frame)
+        forecasts = self.forecast()
+        model_path = self.save_model()
+
+        summary = {
+            "rows": int(len(frame)),
+            "series": int(frame["unique_id"].nunique()),
+            "fitted_rows": int(len(fitted_values)),
+            "cv_rows": int(len(cv_df)),
+            "forecast_rows": int(len(forecasts)),
+            "best_model": str(cv_summary.iloc[0]["model"]),
+            "model_path": str(model_path),
+        }
+        report_dir = self.settings.resolved_path(self.settings.paths.report_dir)
+        report_file = report_dir / "run_summary.json"
+        save_json(summary, report_file)
+        return {
+            "summary": summary,
+            "cv_summary": cv_summary,
+            "forecasts": forecasts,
+        }

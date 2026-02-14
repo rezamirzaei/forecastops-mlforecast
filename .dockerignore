@@ -1,0 +1,17 @@
+.git
+.github
+.idea
+.venv
+__pycache__
+.pytest_cache
+.ruff_cache
+
+artifacts
+
+data/raw
+data/processed
+
+frontend/angular-ui/node_modules
+frontend/angular-ui/dist
+
+*.ipynb
