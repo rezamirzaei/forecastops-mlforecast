@@ -253,6 +253,7 @@ class ForecastPipeline:
                     as_numpy=True,
                 )
                 self.intervals_enabled = False
+        cv_df = self._add_ensemble_column(cv_df, model_names=list(cv_forecaster.models.keys()))
         _ = cv_forecaster.cross_validation_fitted_values()
         summary = summarize_cv(cv_df)
         self.latest_cv_summary = summary
@@ -310,11 +311,23 @@ class ForecastPipeline:
                 before_predict_callback=before_predict_cleanup,
                 after_predict_callback=after_predict_clip,
             )
+        predictions = self._add_ensemble_column(
+            predictions, model_names=list(self.forecaster.models.keys())
+        )
         if ids:
             predictions = predictions[predictions["unique_id"].isin(requested_ids)].reset_index(
                 drop=True
             )
         return predictions
+
+    @staticmethod
+    def _add_ensemble_column(frame: pd.DataFrame, model_names: list[str]) -> pd.DataFrame:
+        available = [name for name in model_names if name in frame.columns]
+        if len(available) < 2:
+            return frame
+        out = frame.copy()
+        out["ensemble_mean"] = out[available].mean(axis=1)
+        return out
 
     def update_with_latest(self, new_observations: pd.DataFrame) -> None:
         if self.forecaster is None:

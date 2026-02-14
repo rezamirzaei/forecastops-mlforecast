@@ -107,6 +107,7 @@ def test_cross_validate_fallbacks_when_intervals_need_missing_xdf(
         def __init__(self) -> None:
             self.calls = 0
             self.prediction_intervals: list[object | None] = []
+            self.models = {"lin_reg": object(), "rf": object()}
 
         def cross_validation(self, *_args, **kwargs):
             self.calls += 1
@@ -120,6 +121,7 @@ def test_cross_validate_fallbacks_when_intervals_need_missing_xdf(
                     "cutoff": [pd.Timestamp("2024-01-01"), pd.Timestamp("2024-01-01")],
                     "y": [100.0, 200.0],
                     "lin_reg": [99.0, 198.0],
+                    "rf": [100.0, 199.0],
                 }
             )
 
@@ -149,6 +151,8 @@ def test_forecast_filters_ids_without_passing_subset_to_predict(
     pipeline.training_frame = frame
 
     class StubForecaster:
+        models = {"lin_reg": object(), "rf": object()}
+
         @staticmethod
         def get_missing_future(h: int, X_df: pd.DataFrame) -> pd.DataFrame:
             return pd.DataFrame(columns=X_df.columns)
@@ -165,6 +169,7 @@ def test_forecast_filters_ids_without_passing_subset_to_predict(
                     "unique_id": ["AAPL.US", "MSFT.US"],
                     "ds": [pd.Timestamp("2024-01-02"), pd.Timestamp("2024-01-02")],
                     "lin_reg": [100.0, 200.0],
+                    "rf": [110.0, 210.0],
                 }
             )
 
@@ -173,3 +178,5 @@ def test_forecast_filters_ids_without_passing_subset_to_predict(
     preds = pipeline.forecast(horizon=1, ids=["AAPL.US"])
 
     assert preds["unique_id"].tolist() == ["AAPL.US"]
+    assert "ensemble_mean" in preds.columns
+    assert preds["ensemble_mean"].tolist() == [105.0]

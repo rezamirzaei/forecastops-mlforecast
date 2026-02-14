@@ -43,6 +43,7 @@ See `docs/MLFORECAST_FEATURE_COVERAGE.md` for detailed mapping.
 Highlights:
 
 - Multi-model forecasting, lags, lag transforms, date features, target transforms.
+- Model set includes linear, elastic-net, random-forest, extra-trees, histogram gradient boosting, LightGBM, XGBoost, plus `ensemble_mean`.
 - `preprocess`, `fit_models`, `fit`, `predict`, `cross_validation`.
 - Fitted values, conformal prediction intervals, callbacks.
 - Future frame validation: `make_future_dataframe`, `get_missing_future`.

@@ -14,8 +14,12 @@ from mlforecast.lag_transforms import (
     SeasonalRollingMean,
 )
 from mlforecast.target_transforms import Differences, LocalStandardScaler
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import (
+    ExtraTreesRegressor,
+    HistGradientBoostingRegressor,
+    RandomForestRegressor,
+)
+from sklearn.linear_model import ElasticNet, LinearRegression
 from xgboost import XGBRegressor
 
 from mlforecast_realworld.config import ForecastSettings
@@ -40,22 +44,40 @@ def lag_transform_namer(tfm: Any, lag: int, *args: Any) -> str:
 def default_models(random_state: int) -> dict[str, Any]:
     return {
         "lin_reg": LinearRegression(),
+        "enet": ElasticNet(alpha=0.001, l1_ratio=0.15, max_iter=5000, random_state=random_state),
         "rf": RandomForestRegressor(
-            n_estimators=100,
+            n_estimators=120,
             random_state=random_state,
             n_jobs=-1,
             max_depth=8,
+            min_samples_leaf=2,
+        ),
+        "etr": ExtraTreesRegressor(
+            n_estimators=180,
+            random_state=random_state,
+            n_jobs=-1,
+            max_depth=10,
+            min_samples_leaf=2,
+        ),
+        "hgb": HistGradientBoostingRegressor(
+            loss="squared_error",
+            learning_rate=0.05,
+            max_iter=220,
+            max_depth=8,
+            min_samples_leaf=20,
+            random_state=random_state,
         ),
         "lgbm": LGBMRegressor(
-            n_estimators=120,
+            n_estimators=160,
             learning_rate=0.05,
             random_state=random_state,
             objective="regression",
             n_jobs=-1,
             verbose=-1,
+            force_col_wise=True,
         ),
         "xgb": XGBRegressor(
-            n_estimators=120,
+            n_estimators=180,
             learning_rate=0.05,
             max_depth=5,
             subsample=0.9,
@@ -69,10 +91,11 @@ def default_models(random_state: int) -> dict[str, Any]:
 
 
 def build_mlforecast(settings: ForecastSettings) -> MLForecast:
+    season_length = int(settings.season_length)
     lag_transforms = {
         1: [ExpandingMean(), ExpandingStd()],
         7: [RollingMean(window_size=7), RollingStd(window_size=7)],
-        14: [SeasonalRollingMean(season_length=5, window_size=2)],
+        14: [SeasonalRollingMean(season_length=season_length, window_size=2)],
         21: [ExponentiallyWeightedMean(alpha=0.3)],
     }
     date_features = ["dayofweek", "month", "quarter", week_of_month]

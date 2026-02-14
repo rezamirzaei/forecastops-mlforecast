@@ -33,6 +33,7 @@ class PathsSettings(BaseModel):
 class ForecastSettings(BaseModel):
     freq: str = "B"
     horizon: PositiveInt = 14
+    season_length: PositiveInt = 5
     lags: list[PositiveInt] = Field(default_factory=lambda: [1, 2, 3, 5, 7, 14, 21])
     cv_windows: PositiveInt = 2
     cv_step_size: PositiveInt = 7
