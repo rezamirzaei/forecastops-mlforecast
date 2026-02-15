@@ -26,7 +26,7 @@ export class ForecastApiService {
     return this.http.get<CompaniesResponse>(`${this.baseUrl}/companies`);
   }
 
-  runPipeline(download = true): Observable<PipelineSummary> {
+  runPipeline(download = false): Observable<PipelineSummary> {
     const params = new HttpParams().set('download', String(download));
     return this.http.post<PipelineSummary>(`${this.baseUrl}/pipeline/run`, null, { params });
   }
