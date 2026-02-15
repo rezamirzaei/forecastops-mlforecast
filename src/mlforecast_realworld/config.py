@@ -11,7 +11,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field, HttpUrl, PositiveInt
+from pydantic import BaseModel, Field, HttpUrl, PositiveInt, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from mlforecast_realworld.data.sp500 import SP500_TICKERS_STOOQ
@@ -27,6 +27,14 @@ class DataSourceSettings(BaseModel):
     end_date: date | None = None
     interval: Literal["d", "w", "m"] = "d"
     base_url: HttpUrl = "https://stooq.com/q/d/l/"
+
+    @field_validator("tickers", mode="before")
+    @classmethod
+    def empty_tickers_to_sp500(cls, v):
+        """Convert empty string or empty list to full S&P 500 universe."""
+        if v == "" or v is None or (isinstance(v, list) and len(v) == 0):
+            return list(SP500_TICKERS_STOOQ)
+        return v
 
 
 class PathsSettings(BaseModel):

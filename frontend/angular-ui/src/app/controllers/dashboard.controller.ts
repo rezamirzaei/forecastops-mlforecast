@@ -126,7 +126,7 @@ export class DashboardControllerComponent implements OnInit {
   runPipeline(): void {
     this.isRunningPipeline = true;
     this.errorMessage = '';
-    this.api.runPipeline(false).subscribe({
+    this.api.runPipeline(true).subscribe({
       next: (summary) => {
         this.summary = summary;
         this.loadMetrics(false);
