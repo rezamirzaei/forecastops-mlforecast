@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from mlforecast_realworld.data.engineering import MarketDataEngineer
+from mlforecast_realworld.data.engineering import MarketDataEngineer, TargetType
 
 
 @pytest.fixture()
@@ -32,5 +32,5 @@ def sample_raw_frame() -> pd.DataFrame:
 
 @pytest.fixture()
 def sample_training_frame(sample_raw_frame: pd.DataFrame) -> pd.DataFrame:
-    engineer = MarketDataEngineer()
+    engineer = MarketDataEngineer(target_type=TargetType.PRICE)
     return engineer.build_training_frame(sample_raw_frame)

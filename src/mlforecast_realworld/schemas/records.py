@@ -8,6 +8,10 @@ from pydantic import BaseModel, Field, PositiveFloat, PositiveInt, ValidationErr
 
 
 class MarketRecord(BaseModel):
+    """Schema for market data records after engineering."""
+
+    model_config = {"extra": "allow"}  # Allow extra fields
+
     unique_id: str
     ds: datetime
     open: PositiveFloat
@@ -15,7 +19,7 @@ class MarketRecord(BaseModel):
     low: PositiveFloat
     close: PositiveFloat
     volume: PositiveInt
-    y: PositiveFloat
+    y: float  # Can be returns (negative) or price (positive)
     sample_weight: PositiveFloat
     sector: str
     asset_class: str

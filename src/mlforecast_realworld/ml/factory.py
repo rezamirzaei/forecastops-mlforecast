@@ -6,11 +6,21 @@ with pre-configured models, lag transforms, and date features suitable
 for financial time-series forecasting.
 
 Key components:
+- ModelRegistry: Registry for model configurations
 - default_models(): Returns a dictionary of sklearn-compatible regressors
 - build_mlforecast(): Constructs an MLForecast instance with full configuration
+
+Models included:
+- Linear: Ridge, ElasticNet (regularized for stability)
+- Tree Ensembles: RandomForest, ExtraTrees
+- Gradient Boosting: HistGradientBoosting, LightGBM, XGBoost
+- Neural Network: MLPRegressor (captures non-linear patterns)
 """
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import dataclass
+from enum import Enum
 from typing import Any
 
 import pandas as pd
@@ -27,35 +37,301 @@ from mlforecast.lag_transforms import (
 from mlforecast.target_transforms import Differences, LocalStandardScaler
 from sklearn.ensemble import (
     ExtraTreesRegressor,
+    GradientBoostingRegressor,
     HistGradientBoostingRegressor,
     RandomForestRegressor,
 )
-from sklearn.linear_model import ElasticNet, LinearRegression
+from sklearn.linear_model import ElasticNet, Ridge
+from sklearn.neural_network import MLPRegressor
 from xgboost import XGBRegressor
 
 from mlforecast_realworld.config import ForecastSettings
 
 # ============================================================================
+# Model Configuration
+# ============================================================================
+
+class ModelComplexity(Enum):
+    """Model complexity levels."""
+    SIMPLE = "simple"      # Fast, interpretable (linear models)
+    MODERATE = "moderate"  # Balanced (tree ensembles)
+    COMPLEX = "complex"    # Powerful but slower (boosting, neural nets)
+
+
+@dataclass(frozen=True)
+class ModelConfig:
+    """Configuration for a single model."""
+    name: str
+    complexity: ModelComplexity
+    factory: Callable[[int], Any]
+    description: str
+
+
+# ============================================================================
 # Constants
 # ============================================================================
 
-# Model hyperparameters
-DEFAULT_N_ESTIMATORS_RF = 120
-DEFAULT_N_ESTIMATORS_ETR = 180
-DEFAULT_N_ESTIMATORS_HGB = 220
-DEFAULT_N_ESTIMATORS_LGBM = 160
-DEFAULT_N_ESTIMATORS_XGB = 180
-DEFAULT_LEARNING_RATE = 0.05
-DEFAULT_MAX_DEPTH_TREE = 8
-DEFAULT_MAX_DEPTH_XGB = 5
-DEFAULT_MIN_SAMPLES_LEAF = 2
-DEFAULT_MIN_SAMPLES_LEAF_HGB = 20
+# Model hyperparameters - optimized for financial returns prediction
+DEFAULT_N_ESTIMATORS_RF = 150
+DEFAULT_N_ESTIMATORS_ETR = 200
+DEFAULT_N_ESTIMATORS_GB = 200
+DEFAULT_N_ESTIMATORS_HGB = 250
+DEFAULT_N_ESTIMATORS_LGBM = 200
+DEFAULT_N_ESTIMATORS_XGB = 200
+DEFAULT_LEARNING_RATE = 0.03  # Lower for better generalization
+DEFAULT_LEARNING_RATE_NN = 0.001
+DEFAULT_MAX_DEPTH_TREE = 10
+DEFAULT_MAX_DEPTH_BOOST = 6
+DEFAULT_MIN_SAMPLES_LEAF = 5
+DEFAULT_MIN_SAMPLES_LEAF_HGB = 25
 
 # Lag transform window sizes
-ROLLING_WINDOW_7 = 7
-ROLLING_WINDOW_14 = 14
+ROLLING_WINDOW_5 = 5
+ROLLING_WINDOW_10 = 10
 ROLLING_WINDOW_21 = 21
-EWM_ALPHA = 0.3
+ROLLING_WINDOW_63 = 63  # Quarterly
+EWM_ALPHA = 0.2
+
+
+# ============================================================================
+# Model Factory Functions
+# ============================================================================
+
+def create_ridge(random_state: int) -> Ridge:
+    """Create Ridge regression model (L2 regularization)."""
+    return Ridge(alpha=1.0, random_state=random_state)
+
+
+def create_elastic_net(random_state: int) -> ElasticNet:
+    """Create ElasticNet model (L1 + L2 regularization)."""
+    return ElasticNet(
+        alpha=0.01,
+        l1_ratio=0.5,
+        max_iter=10000,
+        random_state=random_state,
+    )
+
+
+def create_random_forest(random_state: int) -> RandomForestRegressor:
+    """Create Random Forest regressor."""
+    return RandomForestRegressor(
+        n_estimators=DEFAULT_N_ESTIMATORS_RF,
+        max_depth=DEFAULT_MAX_DEPTH_TREE,
+        min_samples_leaf=DEFAULT_MIN_SAMPLES_LEAF,
+        max_features="sqrt",
+        random_state=random_state,
+        n_jobs=-1,
+    )
+
+
+def create_extra_trees(random_state: int) -> ExtraTreesRegressor:
+    """Create Extra Trees regressor."""
+    return ExtraTreesRegressor(
+        n_estimators=DEFAULT_N_ESTIMATORS_ETR,
+        max_depth=DEFAULT_MAX_DEPTH_TREE + 2,
+        min_samples_leaf=DEFAULT_MIN_SAMPLES_LEAF,
+        max_features="sqrt",
+        random_state=random_state,
+        n_jobs=-1,
+    )
+
+
+def create_gradient_boosting(random_state: int) -> GradientBoostingRegressor:
+    """Create Gradient Boosting regressor (sklearn)."""
+    return GradientBoostingRegressor(
+        n_estimators=DEFAULT_N_ESTIMATORS_GB,
+        learning_rate=DEFAULT_LEARNING_RATE,
+        max_depth=DEFAULT_MAX_DEPTH_BOOST,
+        min_samples_leaf=DEFAULT_MIN_SAMPLES_LEAF,
+        subsample=0.8,
+        random_state=random_state,
+    )
+
+
+def create_hist_gradient_boosting(random_state: int) -> HistGradientBoostingRegressor:
+    """Create Histogram Gradient Boosting regressor."""
+    return HistGradientBoostingRegressor(
+        max_iter=DEFAULT_N_ESTIMATORS_HGB,
+        learning_rate=DEFAULT_LEARNING_RATE,
+        max_depth=DEFAULT_MAX_DEPTH_BOOST,
+        min_samples_leaf=DEFAULT_MIN_SAMPLES_LEAF_HGB,
+        l2_regularization=0.1,
+        random_state=random_state,
+    )
+
+
+def create_lightgbm(random_state: int) -> LGBMRegressor:
+    """Create LightGBM regressor."""
+    return LGBMRegressor(
+        n_estimators=DEFAULT_N_ESTIMATORS_LGBM,
+        learning_rate=DEFAULT_LEARNING_RATE,
+        max_depth=DEFAULT_MAX_DEPTH_BOOST,
+        num_leaves=31,
+        min_child_samples=20,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        reg_alpha=0.1,
+        reg_lambda=0.1,
+        random_state=random_state,
+        n_jobs=-1,
+        verbose=-1,
+        force_col_wise=True,
+    )
+
+
+def create_xgboost(random_state: int) -> XGBRegressor:
+    """Create XGBoost regressor."""
+    return XGBRegressor(
+        n_estimators=DEFAULT_N_ESTIMATORS_XGB,
+        learning_rate=DEFAULT_LEARNING_RATE,
+        max_depth=DEFAULT_MAX_DEPTH_BOOST,
+        min_child_weight=5,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        reg_alpha=0.1,
+        reg_lambda=0.1,
+        random_state=random_state,
+        n_jobs=-1,
+        verbosity=0,
+    )
+
+
+def create_mlp(random_state: int) -> MLPRegressor:
+    """
+    Create MLP (Neural Network) regressor.
+
+    Architecture designed for financial time series:
+    - Multiple hidden layers for non-linear pattern capture
+    - Regularization to prevent overfitting
+    - Adam optimizer with adaptive learning rate
+    """
+    return MLPRegressor(
+        hidden_layer_sizes=(128, 64, 32),
+        activation="relu",
+        solver="adam",
+        alpha=0.01,  # L2 regularization
+        learning_rate="adaptive",
+        learning_rate_init=DEFAULT_LEARNING_RATE_NN,
+        max_iter=500,
+        early_stopping=True,
+        validation_fraction=0.1,
+        n_iter_no_change=20,
+        random_state=random_state,
+    )
+
+
+# ============================================================================
+# Model Registry
+# ============================================================================
+
+class ModelRegistry:
+    """
+    Registry for model configurations.
+
+    Provides a centralized way to manage and create models
+    based on complexity level or specific selection.
+    """
+
+    _models: dict[str, ModelConfig] = {
+        "ridge": ModelConfig(
+            name="ridge",
+            complexity=ModelComplexity.SIMPLE,
+            factory=create_ridge,
+            description="Ridge regression with L2 regularization",
+        ),
+        "enet": ModelConfig(
+            name="enet",
+            complexity=ModelComplexity.SIMPLE,
+            factory=create_elastic_net,
+            description="ElasticNet with L1+L2 regularization",
+        ),
+        "rf": ModelConfig(
+            name="rf",
+            complexity=ModelComplexity.MODERATE,
+            factory=create_random_forest,
+            description="Random Forest ensemble",
+        ),
+        "etr": ModelConfig(
+            name="etr",
+            complexity=ModelComplexity.MODERATE,
+            factory=create_extra_trees,
+            description="Extra Trees ensemble",
+        ),
+        "gb": ModelConfig(
+            name="gb",
+            complexity=ModelComplexity.COMPLEX,
+            factory=create_gradient_boosting,
+            description="Gradient Boosting (sklearn)",
+        ),
+        "hgb": ModelConfig(
+            name="hgb",
+            complexity=ModelComplexity.COMPLEX,
+            factory=create_hist_gradient_boosting,
+            description="Histogram Gradient Boosting",
+        ),
+        "lgbm": ModelConfig(
+            name="lgbm",
+            complexity=ModelComplexity.COMPLEX,
+            factory=create_lightgbm,
+            description="LightGBM gradient boosting",
+        ),
+        "xgb": ModelConfig(
+            name="xgb",
+            complexity=ModelComplexity.COMPLEX,
+            factory=create_xgboost,
+            description="XGBoost gradient boosting",
+        ),
+        "mlp": ModelConfig(
+            name="mlp",
+            complexity=ModelComplexity.COMPLEX,
+            factory=create_mlp,
+            description="Multi-layer Perceptron neural network",
+        ),
+    }
+
+    @classmethod
+    def get_model(cls, name: str, random_state: int) -> Any:
+        """Get a model instance by name."""
+        config = cls._models.get(name)
+        if config is None:
+            raise ValueError(f"Unknown model: {name}. Available: {list(cls._models.keys())}")
+        return config.factory(random_state)
+
+    @classmethod
+    def get_models_by_complexity(
+        cls, complexity: ModelComplexity, random_state: int
+    ) -> dict[str, Any]:
+        """Get all models matching a complexity level."""
+        return {
+            name: config.factory(random_state)
+            for name, config in cls._models.items()
+            if config.complexity == complexity
+        }
+
+    @classmethod
+    def get_all_models(cls, random_state: int) -> dict[str, Any]:
+        """Get all registered models."""
+        return {
+            name: config.factory(random_state)
+            for name, config in cls._models.items()
+        }
+
+    @classmethod
+    def list_models(cls) -> list[dict[str, str]]:
+        """List all available models with descriptions."""
+        return [
+            {
+                "name": config.name,
+                "complexity": config.complexity.value,
+                "description": config.description,
+            }
+            for config in cls._models.values()
+        ]
+
+    @classmethod
+    def register(cls, config: ModelConfig) -> None:
+        """Register a new model configuration."""
+        cls._models[config.name] = config
 
 
 # ============================================================================
@@ -110,68 +386,36 @@ def default_models(random_state: int) -> dict[str, Any]:
     """
     Create the default ensemble of regression models for forecasting.
 
-    This ensemble covers a range of model families:
-    - Linear models: LinearRegression, ElasticNet
-    - Tree ensembles: RandomForest, ExtraTrees
-    - Gradient boosting: HistGradientBoosting, LightGBM, XGBoost
+    This ensemble covers a range of model families optimized for
+    financial returns prediction:
+    - Linear models: Ridge, ElasticNet (regularized for stability)
+    - Tree ensembles: RandomForest, ExtraTrees (feature interactions)
+    - Gradient boosting: GB, HGB, LightGBM, XGBoost (non-linear patterns)
+    - Neural network: MLP (complex non-linear relationships)
 
     Args:
         random_state: Random seed for reproducibility.
 
     Returns:
-        Dictionary mapping model names to fitted sklearn-compatible estimators.
+        Dictionary mapping model names to sklearn-compatible estimators.
     """
-    return {
-        "lin_reg": LinearRegression(),
-        "enet": ElasticNet(
-            alpha=0.001,
-            l1_ratio=0.15,
-            max_iter=5000,
-            random_state=random_state,
-        ),
-        "rf": RandomForestRegressor(
-            n_estimators=DEFAULT_N_ESTIMATORS_RF,
-            random_state=random_state,
-            n_jobs=-1,
-            max_depth=DEFAULT_MAX_DEPTH_TREE,
-            min_samples_leaf=DEFAULT_MIN_SAMPLES_LEAF,
-        ),
-        "etr": ExtraTreesRegressor(
-            n_estimators=DEFAULT_N_ESTIMATORS_ETR,
-            random_state=random_state,
-            n_jobs=-1,
-            max_depth=DEFAULT_MAX_DEPTH_TREE + 2,  # Slightly deeper for ETR
-            min_samples_leaf=DEFAULT_MIN_SAMPLES_LEAF,
-        ),
-        "hgb": HistGradientBoostingRegressor(
-            loss="squared_error",
-            learning_rate=DEFAULT_LEARNING_RATE,
-            max_iter=DEFAULT_N_ESTIMATORS_HGB,
-            max_depth=DEFAULT_MAX_DEPTH_TREE,
-            min_samples_leaf=DEFAULT_MIN_SAMPLES_LEAF_HGB,
-            random_state=random_state,
-        ),
-        "lgbm": LGBMRegressor(
-            n_estimators=DEFAULT_N_ESTIMATORS_LGBM,
-            learning_rate=DEFAULT_LEARNING_RATE,
-            random_state=random_state,
-            objective="regression",
-            n_jobs=-1,
-            verbose=-1,
-            force_col_wise=True,
-        ),
-        "xgb": XGBRegressor(
-            n_estimators=DEFAULT_N_ESTIMATORS_XGB,
-            learning_rate=DEFAULT_LEARNING_RATE,
-            max_depth=DEFAULT_MAX_DEPTH_XGB,
-            subsample=0.9,
-            colsample_bytree=0.9,
-            random_state=random_state,
-            n_jobs=2,
-            objective="reg:squarederror",
-            verbosity=0,
-        ),
-    }
+    return ModelRegistry.get_all_models(random_state)
+
+
+def get_models_for_complexity(
+    complexity: ModelComplexity, random_state: int
+) -> dict[str, Any]:
+    """
+    Get models filtered by complexity level.
+
+    Args:
+        complexity: Desired model complexity level.
+        random_state: Random seed for reproducibility.
+
+    Returns:
+        Dictionary of models matching the complexity level.
+    """
+    return ModelRegistry.get_models_by_complexity(complexity, random_state)
 
 
 def build_mlforecast(settings: ForecastSettings) -> MLForecast:
@@ -179,8 +423,8 @@ def build_mlforecast(settings: ForecastSettings) -> MLForecast:
     Build a fully configured MLForecast instance from settings.
 
     This factory configures:
-    - Multiple regression models via default_models()
-    - Lag transforms: rolling stats, expanding stats, EWM, seasonal
+    - Multiple regression models via ModelRegistry
+    - Extended lag transforms for returns prediction
     - Date features: dayofweek, month, quarter, week_of_month
     - Target transforms: differencing and local standardization
 
@@ -192,17 +436,21 @@ def build_mlforecast(settings: ForecastSettings) -> MLForecast:
     """
     season_length = int(settings.season_length)
 
+    # Extended lag transforms for financial returns
     lag_transforms = {
         1: [ExpandingMean(), ExpandingStd()],
-        ROLLING_WINDOW_7: [
-            RollingMean(window_size=ROLLING_WINDOW_7),
-            RollingStd(window_size=ROLLING_WINDOW_7),
+        ROLLING_WINDOW_5: [
+            RollingMean(window_size=ROLLING_WINDOW_5),
+            RollingStd(window_size=ROLLING_WINDOW_5),
         ],
-        ROLLING_WINDOW_14: [
-            SeasonalRollingMean(season_length=season_length, window_size=2),
+        ROLLING_WINDOW_10: [
+            RollingMean(window_size=ROLLING_WINDOW_10),
+            ExponentiallyWeightedMean(alpha=EWM_ALPHA),
         ],
         ROLLING_WINDOW_21: [
-            ExponentiallyWeightedMean(alpha=EWM_ALPHA),
+            RollingMean(window_size=ROLLING_WINDOW_21),
+            RollingStd(window_size=ROLLING_WINDOW_21),
+            SeasonalRollingMean(season_length=season_length, window_size=4),
         ],
     }
 

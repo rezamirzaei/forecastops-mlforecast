@@ -29,7 +29,7 @@ from mlforecast.utils import PredictionIntervals
 
 from mlforecast_realworld.config import AppSettings, get_settings
 from mlforecast_realworld.data.downloader import StooqDownloader
-from mlforecast_realworld.data.engineering import MarketDataEngineer
+from mlforecast_realworld.data.engineering import MarketDataEngineer, TargetType
 from mlforecast_realworld.ml.evaluation import summarize_cv
 from mlforecast_realworld.ml.factory import build_mlforecast
 from mlforecast_realworld.utils.io import ensure_directory, load_parquet, save_json, save_parquet
@@ -94,7 +94,9 @@ class ForecastPipeline:
 
     def __init__(self, settings: AppSettings | None = None) -> None:
         self.settings = settings or get_settings()
-        self.data_engineer = MarketDataEngineer()
+        # Initialize data engineer with target type from settings
+        target_type = TargetType(self.settings.forecast.target_type)
+        self.data_engineer = MarketDataEngineer(target_type=target_type)
         self.downloader = StooqDownloader(
             settings=self.settings.data,
             output_dir=self.settings.resolved_path(self.settings.paths.raw_data_dir),
@@ -104,6 +106,7 @@ class ForecastPipeline:
         self.training_frame: pd.DataFrame | None = None
         self.latest_cv_summary: pd.DataFrame | None = None
         self.intervals_enabled = False
+        self._last_prices: pd.DataFrame | None = None
         self._ensure_dirs()
 
     @property
@@ -147,6 +150,8 @@ class ForecastPipeline:
         report = asdict(self.data_engineer.quality_report(training))
         save_json(report, self.report_path)
         self.training_frame = training
+        # Store last prices for price reconstruction from returns
+        self._last_prices = self.data_engineer.get_last_prices(training)
         return training
 
     def _require_training_frame(self) -> pd.DataFrame:
@@ -317,7 +322,20 @@ class ForecastPipeline:
         horizon: int | None = None,
         ids: list[str] | None = None,
         levels: list[int] | None = None,
+        return_prices: bool = True,
     ) -> pd.DataFrame:
+        """
+        Generate forecasts for specified series.
+
+        Args:
+            horizon: Forecast horizon (number of steps).
+            ids: List of series IDs to forecast.
+            levels: Confidence levels for prediction intervals.
+            return_prices: If True and target is returns, reconstruct prices.
+
+        Returns:
+            DataFrame with predictions (prices or returns based on settings).
+        """
         if self.forecaster is None:
             if self.model_path.exists():
                 self.load_model()
@@ -364,14 +382,29 @@ class ForecastPipeline:
                 before_predict_callback=before_predict_cleanup,
                 after_predict_callback=after_predict_clip,
             )
+
         predictions = self._add_ensemble_column(
             predictions, model_names=list(self.forecaster.models.keys())
         )
+
+        # Reconstruct prices from returns if needed
+        if return_prices and self.data_engineer.target_type.value != "price":
+            predictions = self._reconstruct_prices(predictions)
+
         if ids:
             predictions = predictions[predictions["unique_id"].isin(requested_ids)].reset_index(
                 drop=True
             )
         return predictions
+
+    def _reconstruct_prices(self, predictions: pd.DataFrame) -> pd.DataFrame:
+        """Reconstruct prices from predicted returns."""
+        if self._last_prices is None:
+            # Try to get from training frame
+            frame = self._require_training_frame()
+            self._last_prices = self.data_engineer.get_last_prices(frame)
+
+        return self.data_engineer.reconstruct_prices(predictions, self._last_prices)
 
     @staticmethod
     def _add_ensemble_column(frame: pd.DataFrame, model_names: list[str]) -> pd.DataFrame:

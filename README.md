@@ -8,7 +8,7 @@ End-to-end forecasting platform using real-world financial time-series data, `ml
 
 | Challenge | MLForecast Solution |
 |-----------|-------------------|
-| **Multiple models to compare** | Train LinearRegression, ElasticNet, RandomForest, ExtraTrees, HistGradientBoosting, LightGBM, and XGBoost in a single `fit()` call |
+| **Multiple models to compare** | Train Ridge, ElasticNet, RandomForest, ExtraTrees, GradientBoosting, HistGradientBoosting, LightGBM, XGBoost, and MLP in a single `fit()` call |
 | **Feature engineering complexity** | Built-in lag transforms (`RollingMean`, `ExpandingStd`, `ExponentiallyWeightedMean`, `SeasonalRollingMean`) with automatic naming |
 | **Cross-validation for time-series** | Native `cross_validation()` with proper temporal splits, refitting, and callbacks |
 | **Prediction intervals** | Conformal prediction intervals out-of-the-box with `PredictionIntervals` |
@@ -21,6 +21,46 @@ End-to-end forecasting platform using real-world financial time-series data, `ml
 - **Prophet**: Single-model, slower on many series, limited ML model support
 - **statsforecast**: Great for statistical models, but MLForecast is better for ML ensembles
 - **Manual sklearn pipelines**: Require custom lag feature code, CV logic, and multi-model orchestration
+
+## Key Features
+
+### Returns-Based Prediction (New!)
+
+Instead of predicting raw prices directly, this project predicts **log returns** and reconstructs prices:
+
+```
+Log Return: r_t = ln(P_t / P_{t-1})
+Reconstruction: P_t = P_{t-1} × exp(r_t)
+```
+
+**Benefits:**
+- More stationary than raw prices (better for ML models)
+- Symmetric treatment of gains/losses
+- Additive over time periods
+- Better for percentage-based error metrics
+
+Configure via `FORECAST__TARGET_TYPE`:
+- `log_return` (default, recommended)
+- `percent_return`
+- `price` (legacy)
+
+### Model Ensemble
+
+9 models trained in parallel with different complexity levels:
+
+| Complexity | Models | Use Case |
+|------------|--------|----------|
+| **Simple** | Ridge, ElasticNet | Fast, interpretable baseline |
+| **Moderate** | RandomForest, ExtraTrees | Feature interactions |
+| **Complex** | GB, HGB, LightGBM, XGBoost, MLP | Non-linear patterns |
+
+### Technical Features
+
+Automatically computed per series:
+- `volatility_5d`, `volatility_20d`: Rolling return volatility
+- `momentum_5d`, `momentum_20d`: Price momentum
+- `range_pct`: High-low range as percentage
+- `volume_ma_ratio`: Volume vs 20-day moving average
 
 ## What This Project Includes
 

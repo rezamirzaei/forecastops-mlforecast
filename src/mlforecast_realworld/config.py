@@ -55,6 +55,7 @@ class ForecastSettings(BaseModel):
     enable_prediction_intervals: bool = False
     num_threads: PositiveInt = 1
     random_state: int = 42
+    target_type: Literal["price", "log_return", "percent_return"] = "log_return"
 
 
 class APISettings(BaseModel):

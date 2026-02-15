@@ -48,6 +48,7 @@ def _test_settings(tmp_path: Path) -> AppSettings:
             "levels": [80],
             "keep_last_n": 120,
             "num_threads": 1,
+            "target_type": "price",  # Use price for test backward compatibility
         },
     )
 
