@@ -39,16 +39,27 @@ export class ForecastChartComponent implements AfterViewInit, OnChanges, OnDestr
   @ViewChild('chartCanvas') chartCanvas!: ElementRef<HTMLCanvasElement>;
 
   private chart: Chart | null = null;
+  private colorCache: Map<string, { solid: string; dashed: string }> = new Map();
 
-  private readonly seriesColors: Record<string, { solid: string; dashed: string }> = {
-    'AAPL.US': { solid: 'rgba(54, 162, 235, 1)', dashed: 'rgba(54, 162, 235, 0.7)' },
-    'MSFT.US': { solid: 'rgba(255, 99, 132, 1)', dashed: 'rgba(255, 99, 132, 0.7)' },
-    'GOOG.US': { solid: 'rgba(75, 192, 192, 1)', dashed: 'rgba(75, 192, 192, 0.7)' },
-    'AMZN.US': { solid: 'rgba(255, 206, 86, 1)', dashed: 'rgba(255, 206, 86, 0.7)' },
-    'META.US': { solid: 'rgba(153, 102, 255, 1)', dashed: 'rgba(153, 102, 255, 0.7)' },
-  };
-
-  private readonly defaultColor = { solid: 'rgba(100, 100, 100, 1)', dashed: 'rgba(100, 100, 100, 0.7)' };
+  // Base colors that will be cycled through for unlimited companies
+  private readonly baseColors = [
+    { h: 210, s: 79, l: 57 },  // Blue
+    { h: 354, s: 100, l: 69 }, // Red/Pink
+    { h: 174, s: 50, l: 52 },  // Teal
+    { h: 45, s: 100, l: 67 },  // Yellow/Gold
+    { h: 262, s: 100, l: 70 }, // Purple
+    { h: 120, s: 50, l: 50 },  // Green
+    { h: 30, s: 100, l: 60 },  // Orange
+    { h: 300, s: 60, l: 60 },  // Magenta
+    { h: 190, s: 80, l: 45 },  // Cyan
+    { h: 0, s: 70, l: 55 },    // Dark Red
+    { h: 240, s: 60, l: 60 },  // Indigo
+    { h: 60, s: 70, l: 50 },   // Olive
+    { h: 330, s: 70, l: 60 },  // Rose
+    { h: 150, s: 60, l: 45 },  // Sea Green
+    { h: 280, s: 50, l: 55 },  // Violet
+    { h: 15, s: 80, l: 55 },   // Coral
+  ];
 
   ngAfterViewInit(): void {
     if (this.records.length > 0 || this.historyRecords.length > 0) {
@@ -66,8 +77,28 @@ export class ForecastChartComponent implements AfterViewInit, OnChanges, OnDestr
     this.chart?.destroy();
   }
 
-  private getColor(seriesId: string) {
-    return this.seriesColors[seriesId] || this.defaultColor;
+  private getColor(seriesId: string, index: number): { solid: string; dashed: string } {
+    // Check cache first
+    if (this.colorCache.has(seriesId)) {
+      return this.colorCache.get(seriesId)!;
+    }
+
+    // Generate color based on index
+    const baseColor = this.baseColors[index % this.baseColors.length];
+
+    // Add slight variation for colors that repeat
+    const variation = Math.floor(index / this.baseColors.length) * 15;
+    const h = (baseColor.h + variation) % 360;
+    const s = Math.max(30, baseColor.s - variation);
+    const l = Math.min(75, baseColor.l + (variation / 2));
+
+    const color = {
+      solid: `hsla(${h}, ${s}%, ${l}%, 1)`,
+      dashed: `hsla(${h}, ${s}%, ${l}%, 0.7)`,
+    };
+
+    this.colorCache.set(seriesId, color);
+    return color;
   }
 
   private createChart(): void {
@@ -96,8 +127,8 @@ export class ForecastChartComponent implements AfterViewInit, OnChanges, OnDestr
     // Build datasets
     const datasets: any[] = [];
 
-    for (const seriesId of allSeriesIds) {
-      const color = this.getColor(seriesId);
+    for (const [index, seriesId] of allSeriesIds.entries()) {
+      const color = this.getColor(seriesId, index);
 
       // History data map
       const seriesHistory = this.historyRecords.filter(r => r.unique_id === seriesId);
