@@ -67,3 +67,6 @@ frontend/angular-ui/.angular/
 Thumbs.db
 ehthumbs.db
 
+
+# Local environment
+.env
