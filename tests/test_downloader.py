@@ -56,7 +56,7 @@ def test_download_all_uses_session(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
         return DummyResponse(text=SAMPLE_CSV)
 
     monkeypatch.setattr(downloader.session, "get", fake_get)
-    frame = downloader.download_all()
+    frame = downloader.download_all(delay_between_requests=0)  # No delay for testing
     assert frame["unique_id"].nunique() == 2
     assert len(frame) == 4
 
