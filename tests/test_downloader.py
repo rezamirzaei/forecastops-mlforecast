@@ -10,6 +10,7 @@ from mlforecast_realworld.config import DataSourceSettings
 from mlforecast_realworld.data.downloader import (
     StooqDownloader,
     build_download_url,
+    is_valid_csv_response,
     parse_stooq_csv,
 )
 
@@ -30,6 +31,23 @@ class DummyResponse:
 def test_build_download_url() -> None:
     url = build_download_url("https://stooq.com/q/d/l/", "aapl.us", "d")
     assert url == "https://stooq.com/q/d/l/?s=aapl.us&i=d"
+
+
+def test_is_valid_csv_response_with_valid_data() -> None:
+    assert is_valid_csv_response(SAMPLE_CSV) is True
+
+
+def test_is_valid_csv_response_with_no_data() -> None:
+    assert is_valid_csv_response("No data") is False
+
+
+def test_is_valid_csv_response_with_html() -> None:
+    assert is_valid_csv_response("<html><body>Error</body></html>") is False
+
+
+def test_is_valid_csv_response_with_empty() -> None:
+    assert is_valid_csv_response("") is False
+    assert is_valid_csv_response(None) is False
 
 
 def test_parse_stooq_csv() -> None:
@@ -59,6 +77,23 @@ def test_download_all_uses_session(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
     frame = downloader.download_all(delay_between_requests=0)  # No delay for testing
     assert frame["unique_id"].nunique() == 2
     assert len(frame) == 4
+
+
+def test_download_ticker_handles_invalid_response(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Test that invalid responses are handled gracefully."""
+    settings = DataSourceSettings(
+        tickers=["invalid.us"],
+        start_date="2024-01-01",
+        end_date="2024-01-10",
+    )
+    downloader = StooqDownloader(settings=settings, output_dir=tmp_path)
+
+    def fake_get(url: str, timeout: int) -> DummyResponse:  # noqa: ARG001
+        return DummyResponse(text="No data")
+
+    monkeypatch.setattr(downloader.session, "get", fake_get)
+    result = downloader.download_ticker("invalid.us")
+    assert result is None
 
 
 def test_save_raw(tmp_path: Path) -> None:

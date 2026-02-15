@@ -19,6 +19,22 @@ def build_download_url(base_url: str, ticker: str, interval: str) -> str:
     return f"{base_url}?s={ticker}&i={interval}"
 
 
+def is_valid_csv_response(csv_text: str) -> bool:
+    """Check if the response looks like valid CSV data from Stooq."""
+    if not csv_text or len(csv_text) < 50:
+        return False
+    # Stooq returns "No data" or HTML when ticker doesn't exist
+    if "No data" in csv_text:
+        return False
+    if "<html" in csv_text.lower() or "<!doctype" in csv_text.lower():
+        return False
+    # Check if it has the expected header
+    first_line = csv_text.split('\n')[0].strip()
+    if "Date" not in first_line or "Close" not in first_line:
+        return False
+    return True
+
+
 def parse_stooq_csv(csv_text: str, ticker: str) -> pd.DataFrame:
     """Parse Stooq CSV response into a DataFrame."""
     frame = pd.read_csv(StringIO(csv_text))
@@ -46,6 +62,10 @@ class StooqDownloader:
         self.settings = settings
         self.output_dir = output_dir
         self.session = requests.Session()
+        # Add headers to look like a browser
+        self.session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+        })
 
     def download_ticker(self, ticker: str) -> pd.DataFrame | None:
         """Download data for a single ticker. Returns None if download fails."""
@@ -54,9 +74,10 @@ class StooqDownloader:
             response = self.session.get(url, timeout=60)
             response.raise_for_status()
 
-            # Check if response contains actual data (not an error page)
-            if "No data" in response.text or len(response.text) < 100:
-                logger.warning("No data available for ticker: %s", ticker)
+            # Validate response before parsing
+            if not is_valid_csv_response(response.text):
+                logger.debug("Invalid response for ticker %s: %s...",
+                            ticker, response.text[:100] if response.text else "empty")
                 return None
 
             ticker_frame = parse_stooq_csv(response.text, ticker)
@@ -68,7 +89,7 @@ class StooqDownloader:
             filtered = ticker_frame.loc[mask].reset_index(drop=True)
 
             if len(filtered) == 0:
-                logger.warning("No data in date range for ticker: %s", ticker)
+                logger.debug("No data in date range for ticker: %s", ticker)
                 return None
 
             return filtered
@@ -76,11 +97,11 @@ class StooqDownloader:
         except requests.RequestException as e:
             logger.warning("Network error downloading %s: %s", ticker, e)
             return None
-        except ValueError as e:
-            logger.warning("Parse error for %s: %s", ticker, e)
+        except (ValueError, pd.errors.EmptyDataError, pd.errors.ParserError) as e:
+            logger.debug("Parse error for %s: %s", ticker, e)
             return None
 
-    def download_all(self, delay_between_requests: float = 0.1) -> pd.DataFrame:
+    def download_all(self, delay_between_requests: float = 0.2) -> pd.DataFrame:
         """Download data for all configured tickers with rate limiting."""
         frames: list[pd.DataFrame] = []
         total = len(self.settings.tickers)
@@ -106,7 +127,7 @@ class StooqDownloader:
                             i + 1, total, successful, failed)
 
         if not frames:
-            raise ValueError("No data downloaded for any ticker")
+            raise ValueError("No data downloaded for any ticker. Check network connection and Stooq availability.")
 
         logger.info("Download complete: %d successful, %d failed", successful, failed)
         combined = pd.concat(frames, ignore_index=True)
