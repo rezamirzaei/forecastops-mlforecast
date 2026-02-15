@@ -1,10 +1,11 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { forkJoin } from 'rxjs';
 
 import { ForecastChartComponent } from '../components/forecast-chart.component';
 import { MetricsChartComponent } from '../components/metrics-chart.component';
-import { AccuracyMetric, ForecastRecord, PipelineSummary } from '../models/forecast.models';
+import { AccuracyMetric, ForecastRecord, HistoryRecord, PipelineSummary } from '../models/forecast.models';
 import { ForecastApiService } from '../services/forecast-api.service';
 
 @Component({
@@ -19,12 +20,14 @@ export class DashboardControllerComponent implements OnInit {
   availableModels: string[] = [];
 
   horizon = 14;
+  historyDays = 60;
   levels = '80,95';
   selectedIds: string[] = [];
   selectedModel = '';
   summary: PipelineSummary | null = null;
   metrics: AccuracyMetric[] = [];
   records: ForecastRecord[] = [];
+  historyRecords: HistoryRecord[] = [];
   errorMessage = '';
   isRunningPipeline = false;
   isForecasting = false;
@@ -87,26 +90,32 @@ export class DashboardControllerComponent implements OnInit {
     }
     this.isForecasting = true;
     this.errorMessage = '';
-    this.api
-      .forecast({
+
+    // Load both forecast and history in parallel
+    forkJoin({
+      forecast: this.api.forecast({
         horizon: this.horizon,
         ids: this.selectedIds,
         levels: this.parseLevels(this.levels),
-      })
-      .subscribe({
-        next: (response) => {
-          this.records = response.records;
-          this.availableModels = [...new Set(response.records.map(r => r.model_name))];
-          if (this.availableModels.length > 0 && !this.selectedModel) {
-            this.selectedModel = this.availableModels[0];
-          }
-          this.isForecasting = false;
-        },
-        error: (err) => {
-          this.errorMessage = this.buildError(err);
-          this.isForecasting = false;
-        },
-      });
+      }),
+      history: this.api.getHistory(this.selectedIds, this.historyDays),
+    }).subscribe({
+      next: ({ forecast, history }) => {
+        this.records = forecast.records;
+        this.historyRecords = history.records;
+        this.availableModels = [...new Set(forecast.records.map(r => r.model_name))];
+        if (this.availableModels.length > 0 && !this.selectedModel) {
+          this.selectedModel = this.availableModels.includes('ensemble_mean')
+            ? 'ensemble_mean'
+            : this.availableModels[0];
+        }
+        this.isForecasting = false;
+      },
+      error: (err) => {
+        this.errorMessage = this.buildError(err);
+        this.isForecasting = false;
+      },
+    });
   }
 
   private parseLevels(value: string): number[] {

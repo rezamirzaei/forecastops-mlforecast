@@ -31,6 +31,15 @@ class MockApiService {
       count: 1,
     });
   }
+
+  getHistory() {
+    return of({
+      records: [
+        { unique_id: 'AAPL.US', ds: '2024-01-10', value: 120.0 },
+      ],
+      count: 1,
+    });
+  }
 }
 
 describe('DashboardControllerComponent', () => {
@@ -63,5 +72,6 @@ describe('DashboardControllerComponent', () => {
     };
     component.runForecast();
     expect(component.records.length).toBe(1);
+    expect(component.historyRecords.length).toBe(1);
   });
 });

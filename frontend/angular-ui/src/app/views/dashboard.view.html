@@ -14,8 +14,13 @@
 
     <div class="forecast-form">
       <label>
-        Horizon
-        <input type="number" min="1" [(ngModel)]="horizon" />
+        Horizon (days)
+        <input type="number" min="1" max="90" [(ngModel)]="horizon" />
+      </label>
+
+      <label>
+        History (days)
+        <input type="number" min="10" max="365" [(ngModel)]="historyDays" />
       </label>
 
       <label>
@@ -70,18 +75,28 @@
     <app-metrics-chart [metrics]="metrics"></app-metrics-chart>
   </section>
 
-  <!-- Forecast Chart -->
-  <section class="panel chart-panel" *ngIf="records.length > 0">
-    <h2>Forecast Visualization</h2>
-    <div class="model-selector" *ngIf="availableModels.length > 1">
-      <label>
-        Select Model:
-        <select [(ngModel)]="selectedModel">
-          <option *ngFor="let model of availableModels" [value]="model">{{ model }}</option>
-        </select>
-      </label>
+  <!-- Forecast Chart with History -->
+  <section class="panel chart-panel" *ngIf="records.length > 0 || historyRecords.length > 0">
+    <h2>Price History &amp; Forecast</h2>
+    <div class="chart-controls">
+      <div class="model-selector" *ngIf="availableModels.length > 0">
+        <label>
+          Model:
+          <select [(ngModel)]="selectedModel">
+            <option *ngFor="let model of availableModels" [value]="model">{{ model }}</option>
+          </select>
+        </label>
+      </div>
+      <div class="chart-legend">
+        <span class="legend-solid">━ History</span>
+        <span class="legend-dashed">┅ Forecast</span>
+      </div>
     </div>
-    <app-forecast-chart [records]="records" [selectedModel]="selectedModel"></app-forecast-chart>
+    <app-forecast-chart
+      [records]="records"
+      [historyRecords]="historyRecords"
+      [selectedModel]="selectedModel">
+    </app-forecast-chart>
   </section>
 
   <section class="panel results" *ngIf="records.length > 0">

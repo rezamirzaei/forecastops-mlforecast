@@ -143,8 +143,16 @@ button:not(:disabled):hover {
   min-height: 350px;
 }
 
-.model-selector {
+.chart-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 1rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.model-selector {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -153,6 +161,21 @@ button:not(:disabled):hover {
 .model-selector select {
   min-height: auto;
   padding: 0.4rem 0.6rem;
+}
+
+.chart-legend {
+  display: flex;
+  gap: 1.5rem;
+  font-size: 0.85rem;
+  color: rgba(20, 35, 59, 0.7);
+}
+
+.legend-solid {
+  color: rgba(54, 162, 235, 1);
+}
+
+.legend-dashed {
+  color: rgba(54, 162, 235, 0.7);
 }
 
 .table-note {
