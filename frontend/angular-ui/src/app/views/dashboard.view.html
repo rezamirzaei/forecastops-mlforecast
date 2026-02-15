@@ -43,7 +43,7 @@
     <div class="summary-grid">
       <article>
         <span>Rows</span>
-        <strong>{{ summary.rows }}</strong>
+        <strong>{{ summary.rows | number }}</strong>
       </article>
       <article>
         <span>Series</span>
@@ -59,9 +59,29 @@
       </article>
       <article>
         <span>Models</span>
-        <strong>{{ summary.trained_models.join(', ') }}</strong>
+        <strong>{{ summary.trained_models.length }}</strong>
       </article>
     </div>
+  </section>
+
+  <!-- Model Accuracy Chart -->
+  <section class="panel chart-panel" *ngIf="metrics.length > 0">
+    <h2>Model Accuracy Comparison</h2>
+    <app-metrics-chart [metrics]="metrics"></app-metrics-chart>
+  </section>
+
+  <!-- Forecast Chart -->
+  <section class="panel chart-panel" *ngIf="records.length > 0">
+    <h2>Forecast Visualization</h2>
+    <div class="model-selector" *ngIf="availableModels.length > 1">
+      <label>
+        Select Model:
+        <select [(ngModel)]="selectedModel">
+          <option *ngFor="let model of availableModels" [value]="model">{{ model }}</option>
+        </select>
+      </label>
+    </div>
+    <app-forecast-chart [records]="records" [selectedModel]="selectedModel"></app-forecast-chart>
   </section>
 
   <section class="panel results" *ngIf="records.length > 0">
@@ -76,7 +96,7 @@
         </tr>
       </thead>
       <tbody>
-        <tr *ngFor="let row of records">
+        <tr *ngFor="let row of records | slice:0:50">
           <td>{{ row.unique_id }}</td>
           <td>{{ row.ds | date:'yyyy-MM-dd' }}</td>
           <td>{{ row.model_name }}</td>
@@ -84,6 +104,9 @@
         </tr>
       </tbody>
     </table>
+    <p class="table-note" *ngIf="records.length > 50">
+      Showing first 50 of {{ records.length }} records. View chart for full visualization.
+    </p>
   </section>
 
   <section class="panel results" *ngIf="metrics.length > 0">

@@ -1,3 +1,9 @@
+"""
+Application configuration using Pydantic Settings.
+
+This module provides typed configuration classes that can be loaded
+from environment variables and .env files.
+"""
 from __future__ import annotations
 
 from datetime import date
@@ -10,6 +16,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class DataSourceSettings(BaseModel):
+    """Configuration for data sources."""
+
     tickers: list[str] = Field(
         default_factory=lambda: ["aapl.us", "msft.us", "goog.us", "amzn.us", "meta.us"]
     )
@@ -20,6 +28,8 @@ class DataSourceSettings(BaseModel):
 
 
 class PathsSettings(BaseModel):
+    """Configuration for file paths."""
+
     project_root: Path = Path(".")
     raw_data_dir: Path = Path("data/raw")
     processed_data_dir: Path = Path("data/processed")
@@ -27,10 +37,13 @@ class PathsSettings(BaseModel):
     report_dir: Path = Path("artifacts/reports")
 
     def all_dirs(self) -> list[Path]:
+        """Return all configured directories."""
         return [self.raw_data_dir, self.processed_data_dir, self.model_dir, self.report_dir]
 
 
 class ForecastSettings(BaseModel):
+    """Configuration for forecasting parameters."""
+
     freq: str = "B"
     horizon: PositiveInt = 14
     season_length: PositiveInt = 5
@@ -44,7 +57,20 @@ class ForecastSettings(BaseModel):
     random_state: int = 42
 
 
+class APISettings(BaseModel):
+    """Configuration for API server."""
+
+    host: str = "0.0.0.0"
+    port: int = 8000
+    cors_origins: list[str] = Field(
+        default_factory=lambda: ["http://localhost:4200", "http://localhost:8080"]
+    )
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+
+
 class AppSettings(BaseSettings):
+    """Main application settings loaded from environment."""
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_nested_delimiter="__",
@@ -55,8 +81,10 @@ class AppSettings(BaseSettings):
     data: DataSourceSettings = DataSourceSettings()
     paths: PathsSettings = PathsSettings()
     forecast: ForecastSettings = ForecastSettings()
+    api: APISettings = APISettings()
 
     def resolved_path(self, path: Path) -> Path:
+        """Resolve a path relative to project root."""
         if path.is_absolute():
             return path
         return (self.paths.project_root / path).resolve()
@@ -64,4 +92,5 @@ class AppSettings(BaseSettings):
 
 @lru_cache(maxsize=1)
 def get_settings() -> AppSettings:
+    """Get cached application settings."""
     return AppSettings()

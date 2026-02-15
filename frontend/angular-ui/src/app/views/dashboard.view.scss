@@ -139,6 +139,29 @@ button:not(:disabled):hover {
   border-radius: 10px;
 }
 
+.chart-panel {
+  min-height: 350px;
+}
+
+.model-selector {
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.model-selector select {
+  min-height: auto;
+  padding: 0.4rem 0.6rem;
+}
+
+.table-note {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+  color: rgba(20, 35, 59, 0.6);
+  font-style: italic;
+}
+
 @keyframes float-in {
   from {
     opacity: 0;

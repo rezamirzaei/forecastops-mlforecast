@@ -7,6 +7,7 @@ import {
   ForecastResponse,
   MetricsResponse,
   PipelineSummary,
+  SeriesResponse,
 } from '../models/forecast.models';
 
 @Injectable({ providedIn: 'root' })
@@ -14,6 +15,10 @@ export class ForecastApiService {
   private readonly baseUrl = '/api';
 
   constructor(private readonly http: HttpClient) {}
+
+  getAvailableSeries(): Observable<SeriesResponse> {
+    return this.http.get<SeriesResponse>(`${this.baseUrl}/series`);
+  }
 
   runPipeline(download = false): Observable<PipelineSummary> {
     const params = new HttpParams().set('download', String(download));

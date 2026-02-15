@@ -1,9 +1,17 @@
+"""
+Forecast service layer.
+
+This module provides the ForecastService class which acts as an intermediary
+between the API endpoints and the ML pipeline, handling data transformation
+and business logic.
+"""
 from __future__ import annotations
 
 from typing import Any
 
 import pandas as pd
 
+from mlforecast_realworld.config import get_settings
 from mlforecast_realworld.ml.pipeline import ForecastPipeline
 from mlforecast_realworld.schemas.records import (
     AccuracyMetric,
@@ -14,8 +22,17 @@ from mlforecast_realworld.schemas.records import (
 
 
 class ForecastService:
+    """Service layer for forecast operations."""
+
     def __init__(self, pipeline: ForecastPipeline | None = None) -> None:
+        """Initialize the service with an optional pipeline instance."""
         self.pipeline = pipeline or ForecastPipeline()
+        self._settings = get_settings()
+
+    def get_available_series(self) -> list[str]:
+        """Get list of available series IDs for forecasting."""
+        # Return configured tickers in uppercase format
+        return [ticker.upper() for ticker in self._settings.data.tickers]
 
     def run_pipeline(self, download: bool = True) -> PipelineSummary:
         self.pipeline.run_full_pipeline(download=download)

@@ -6,6 +6,11 @@ export interface PipelineSummary {
   trained_models: string[];
 }
 
+export interface SeriesResponse {
+  series: string[];
+  count: number;
+}
+
 export interface ForecastRequest {
   horizon: number;
   ids?: string[];

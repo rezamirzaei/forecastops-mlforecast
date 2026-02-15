@@ -62,7 +62,16 @@ def test_forecast_service_get_metrics() -> None:
 def test_api_endpoints(monkeypatch) -> None:
     from mlforecast_realworld.api import main as main_mod
 
+    class DummyPipelineForService:
+        forecaster = None
+
     class DummyService:
+        def __init__(self):
+            self.pipeline = DummyPipelineForService()
+
+        def get_available_series(self):
+            return ["AAPL.US", "MSFT.US"]
+
         def run_pipeline(self, download: bool = True):  # noqa: ARG002
             from mlforecast_realworld.schemas.records import PipelineSummary
 

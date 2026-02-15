@@ -1,23 +1,27 @@
 import { CommonModule } from '@angular/common';
-import { Component } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
+import { ForecastChartComponent } from '../components/forecast-chart.component';
+import { MetricsChartComponent } from '../components/metrics-chart.component';
 import { AccuracyMetric, ForecastRecord, PipelineSummary } from '../models/forecast.models';
 import { ForecastApiService } from '../services/forecast-api.service';
 
 @Component({
   selector: 'app-dashboard-controller',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, MetricsChartComponent, ForecastChartComponent],
   templateUrl: '../views/dashboard.view.html',
   styleUrls: ['../views/dashboard.view.scss'],
 })
-export class DashboardControllerComponent {
-  readonly availableIds = ['AAPL.US', 'MSFT.US', 'GOOG.US', 'AMZN.US', 'META.US'];
+export class DashboardControllerComponent implements OnInit {
+  availableIds: string[] = [];
+  availableModels: string[] = [];
 
   horizon = 14;
   levels = '80,95';
-  selectedIds = ['AAPL.US', 'MSFT.US', 'GOOG.US'];
+  selectedIds: string[] = [];
+  selectedModel = '';
   summary: PipelineSummary | null = null;
   metrics: AccuracyMetric[] = [];
   records: ForecastRecord[] = [];
@@ -27,6 +31,24 @@ export class DashboardControllerComponent {
   isLoadingMetrics = false;
 
   constructor(private readonly api: ForecastApiService) {}
+
+  ngOnInit(): void {
+    this.loadAvailableSeries();
+  }
+
+  loadAvailableSeries(): void {
+    this.api.getAvailableSeries().subscribe({
+      next: (response) => {
+        this.availableIds = response.series;
+        this.selectedIds = response.series.slice(0, 3);
+      },
+      error: () => {
+        // Fallback to defaults if API not available
+        this.availableIds = ['AAPL.US', 'MSFT.US', 'GOOG.US', 'AMZN.US', 'META.US'];
+        this.selectedIds = this.availableIds.slice(0, 3);
+      },
+    });
+  }
 
   runPipeline(): void {
     this.isRunningPipeline = true;
@@ -74,6 +96,10 @@ export class DashboardControllerComponent {
       .subscribe({
         next: (response) => {
           this.records = response.records;
+          this.availableModels = [...new Set(response.records.map(r => r.model_name))];
+          if (this.availableModels.length > 0 && !this.selectedModel) {
+            this.selectedModel = this.availableModels[0];
+          }
           this.isForecasting = false;
         },
         error: (err) => {
