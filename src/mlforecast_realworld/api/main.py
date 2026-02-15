@@ -118,6 +118,29 @@ def create_app() -> FastAPI:
             logger.error("Runtime error during forecast: %s", exc)
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
+    @app.get("/history", tags=["forecast"])
+    def history(
+        ids: str | None = None,
+        last_n: int = 60,
+    ) -> dict[str, object]:
+        """
+        Get historical prices for visualization.
+
+        Args:
+            ids: Comma-separated list of series IDs (default: all).
+            last_n: Number of recent data points per series (default: 60).
+
+        Returns:
+            Historical price records for charting.
+        """
+        try:
+            id_list = [s.strip() for s in ids.split(",")] if ids else None
+            records = service.get_history(ids=id_list, last_n=last_n)
+            return {"records": records, "count": len(records)}
+        except ValueError as exc:
+            logger.warning("History error: %s", exc)
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     return app
 
 

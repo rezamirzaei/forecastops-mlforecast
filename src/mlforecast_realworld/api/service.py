@@ -72,6 +72,44 @@ class ForecastService:
         ]
         return metrics
 
+    def get_history(
+        self, ids: list[str] | None = None, last_n: int = 60
+    ) -> list[dict[str, Any]]:
+        """
+        Get historical prices for visualization.
+
+        Args:
+            ids: List of series IDs (default: all available).
+            last_n: Number of recent data points per series.
+
+        Returns:
+            List of historical price records.
+        """
+        frame = self.pipeline.training_frame
+        if frame is None:
+            # Try to load from disk
+            if self.pipeline.processed_data_path.exists():
+                frame = self.pipeline._require_training_frame()
+            else:
+                raise ValueError("No training data available. Run pipeline first.")
+
+        # Filter by IDs if specified
+        if ids:
+            frame = frame[frame["unique_id"].isin(ids)]
+
+        # Get last N records per series
+        records: list[dict[str, Any]] = []
+        for uid in frame["unique_id"].unique():
+            series_data = frame[frame["unique_id"] == uid].sort_values("ds").tail(last_n)
+            for _, row in series_data.iterrows():
+                records.append({
+                    "unique_id": str(row["unique_id"]),
+                    "ds": pd.Timestamp(row["ds"]).isoformat(),
+                    "value": float(row["close"]),
+                })
+
+        return records
+
     @staticmethod
     def _prediction_model_columns(preds: pd.DataFrame) -> list[str]:
         excluded = {"unique_id", "ds"}

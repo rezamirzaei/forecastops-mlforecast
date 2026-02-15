@@ -5,6 +5,7 @@ import { Observable } from 'rxjs';
 import {
   ForecastRequest,
   ForecastResponse,
+  HistoryResponse,
   MetricsResponse,
   PipelineSummary,
   SeriesResponse,
@@ -32,6 +33,14 @@ export class ForecastApiService {
 
   forecast(request: ForecastRequest): Observable<ForecastResponse> {
     return this.http.post<ForecastResponse>(`${this.baseUrl}/forecast`, request);
+  }
+
+  getHistory(ids?: string[], lastN = 60): Observable<HistoryResponse> {
+    let params = new HttpParams().set('last_n', String(lastN));
+    if (ids && ids.length > 0) {
+      params = params.set('ids', ids.join(','));
+    }
+    return this.http.get<HistoryResponse>(`${this.baseUrl}/history`, { params });
   }
 
   health(): Observable<{ status: string }> {

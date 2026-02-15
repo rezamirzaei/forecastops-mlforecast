@@ -154,6 +154,34 @@ class TestForecastEndpoint:
         assert data["count"] > 0
 
 
+class TestHistoryEndpoint:
+    """Tests for /history endpoint."""
+
+    def test_history_returns_records(self, client, mock_pipeline):
+        """History endpoint should return historical price records."""
+        # Mock has training_frame with AAPL.US data
+        response = client.get("/history?last_n=30")
+        assert response.status_code == 200
+        data = response.json()
+        assert "records" in data
+        assert "count" in data
+        assert data["count"] > 0
+        # Check record structure
+        record = data["records"][0]
+        assert "unique_id" in record
+        assert "ds" in record
+        assert "value" in record
+
+    def test_history_filters_by_ids(self, client, mock_pipeline):
+        """History should filter by specified IDs."""
+        response = client.get("/history?ids=AAPL.US&last_n=10")
+        assert response.status_code == 200
+        data = response.json()
+        # All records should be for AAPL.US
+        for record in data["records"]:
+            assert record["unique_id"] == "AAPL.US"
+
+
 class TestCORS:
     """Tests for CORS configuration."""
 

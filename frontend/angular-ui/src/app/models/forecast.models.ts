@@ -24,8 +24,19 @@ export interface ForecastRecord {
   value: number;
 }
 
+export interface HistoryRecord {
+  unique_id: string;
+  ds: string;
+  value: number;
+}
+
 export interface ForecastResponse {
   records: ForecastRecord[];
+  count: number;
+}
+
+export interface HistoryResponse {
+  records: HistoryRecord[];
   count: number;
 }
 
