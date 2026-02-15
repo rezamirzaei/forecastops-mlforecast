@@ -8,8 +8,8 @@ import pytest
 
 from mlforecast_realworld.config import DataSourceSettings
 from mlforecast_realworld.data.downloader import (
-    YahooFinanceDownloader,
     StooqDownloader,
+    YahooFinanceDownloader,
     build_download_url,
     is_valid_csv_response,
     parse_stooq_csv,
