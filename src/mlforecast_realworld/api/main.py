@@ -89,13 +89,26 @@ def create_app() -> FastAPI:
 
     @app.get("/companies", tags=["forecast"])
     def available_companies() -> dict[str, Any]:
-        """Get all S&P 500 companies with metadata for UI selection."""
+        """Get companies with training data available for forecasting."""
         companies = service.get_all_companies()
+        sectors = list(set(c["sector"] for c in companies))
+        return {
+            "companies": companies,
+            "sectors": sorted(sectors),
+            "count": len(companies),
+        }
+
+    @app.get("/companies/all", tags=["forecast"])
+    def all_sp500_companies() -> dict[str, Any]:
+        """Get ALL S&P 500 companies (including those without data)."""
+        companies = service.get_all_sp500_companies()
         sectors = service.get_all_sectors()
+        available_count = sum(1 for c in companies if c["has_data"])
         return {
             "companies": companies,
             "sectors": sectors,
-            "count": len(companies),
+            "total_count": len(companies),
+            "available_count": available_count,
         }
 
     @app.post("/pipeline/run", response_model=PipelineSummary, tags=["pipeline"])

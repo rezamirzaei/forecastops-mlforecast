@@ -13,7 +13,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from mlforecast_realworld.api.main import create_app
-from mlforecast_realworld.data.sp500 import SP500_TICKERS_STOOQ
 
 
 @pytest.fixture
@@ -61,16 +60,19 @@ class TestSeriesEndpoint:
     """Tests for /series endpoint."""
 
     def test_series_returns_available_tickers(self, client):
-        """Series endpoint should return configured tickers."""
+        """Series endpoint should return tickers that have training data."""
         response = client.get("/series")
         assert response.status_code == 200
         data = response.json()
         assert "series" in data
         assert "count" in data
         assert len(data["series"]) == data["count"]
-        # Should include full default S&P 500 universe in uppercase.
-        assert data["count"] == len(SP500_TICKERS_STOOQ)
-        assert "AAPL.US" in data["series"]
+        # Returns only series with actual data (from processed parquet)
+        # When no data exists, falls back to config tickers
+        assert data["count"] >= 1  # At least one series should be available
+        # All series should be uppercase
+        for series in data["series"]:
+            assert series == series.upper()
 
 
 class TestPipelineEndpoints:

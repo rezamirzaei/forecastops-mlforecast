@@ -227,7 +227,22 @@ button:not(:disabled):hover {
 
 /* Company Selection Styles */
 .company-selection h2 {
+  margin: 0 0 0.5rem;
+}
+
+.info-note {
   margin: 0 0 1rem;
+  padding: 0.6rem 0.8rem;
+  background: rgba(54, 162, 235, 0.1);
+  border: 1px solid rgba(54, 162, 235, 0.3);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: rgba(20, 35, 59, 0.8);
+}
+
+.info-note.warning {
+  background: rgba(255, 193, 7, 0.15);
+  border-color: rgba(255, 193, 7, 0.4);
 }
 
 .filters {

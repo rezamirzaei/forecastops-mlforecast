@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from unittest.mock import MagicMock
 
 import pandas as pd
 from fastapi.testclient import TestClient
@@ -8,7 +9,6 @@ from fastapi.testclient import TestClient
 from mlforecast_realworld.api.main import create_app
 from mlforecast_realworld.api.service import ForecastService
 from mlforecast_realworld.config import AppSettings
-from mlforecast_realworld.data.sp500 import SP500_TICKERS_STOOQ
 from mlforecast_realworld.schemas.records import ForecastRequest
 
 
@@ -61,11 +61,27 @@ def test_forecast_service_get_metrics() -> None:
     assert metrics[0]["model"] == "lin_reg"
 
 
-def test_forecast_service_series_falls_back_to_sp500_when_tickers_empty() -> None:
+def test_forecast_service_series_uses_training_data_when_available() -> None:
+    """Service should return only series that have training data."""
     service = ForecastService(pipeline=DummyPipeline())
-    service._settings = AppSettings(data={"tickers": []})
     series = service.get_available_series()
-    assert len(series) == len(SP500_TICKERS_STOOQ)
+    # DummyPipeline has training_frame with AAPL.US
+    assert "AAPL.US" in series
+    # Should only return series from training data, not all S&P 500
+    assert len(series) <= 10  # Training data has limited series
+
+
+def test_forecast_service_series_falls_back_to_config_when_no_data() -> None:
+    """Service should fallback to config tickers when no training data."""
+    pipeline = DummyPipeline()
+    pipeline.training_frame = None  # No training data
+    pipeline.processed_data_path = MagicMock()
+    pipeline.processed_data_path.exists.return_value = False
+
+    service = ForecastService(pipeline=pipeline)
+    service._settings = AppSettings(data={"tickers": ["aapl.us", "msft.us"]})
+    series = service.get_available_series()
+    # Falls back to config tickers
     assert "AAPL.US" in series
     assert "MSFT.US" in series
 

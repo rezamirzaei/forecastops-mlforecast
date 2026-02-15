@@ -6,9 +6,16 @@
 
   <!-- Company Selection Panel -->
   <section class="panel company-selection">
-    <h2>Select Companies ({{ selectedIds.length }} selected)</h2>
+    <h2>Select Companies ({{ selectedIds.length }} selected of {{ allCompanies.length }} available)</h2>
 
-    <div class="filters">
+    <p class="info-note" *ngIf="allCompanies.length > 0 && allCompanies.length < 500">
+      📊 Data available for {{ allCompanies.length }} companies. Run pipeline with "download=true" to add more.
+    </p>
+    <p class="info-note warning" *ngIf="allCompanies.length === 0 && !isLoading">
+      ⚠️ No data available. Click "Run Pipeline" to download data and train models.
+    </p>
+
+    <div class="filters" *ngIf="allCompanies.length > 0">
       <label>
         Search
         <input type="text" [(ngModel)]="searchQuery" placeholder="Search by ticker or name..." />
@@ -26,7 +33,7 @@
       </div>
     </div>
 
-    <div class="company-grid" *ngIf="!isLoading">
+    <div class="company-grid" *ngIf="!isLoading && allCompanies.length > 0">
       <div
         *ngFor="let company of filteredCompanies | slice:0:100"
         class="company-card"
@@ -37,7 +44,7 @@
         <span class="sector">{{ company.sector }}</span>
       </div>
     </div>
-    <p class="loading" *ngIf="isLoading">Loading S&amp;P 500 companies...</p>
+    <p class="loading" *ngIf="isLoading">Loading companies...</p>
     <p class="table-note" *ngIf="filteredCompanies.length > 100">
       Showing first 100 of {{ filteredCompanies.length }} companies. Use search to narrow results.
     </p>

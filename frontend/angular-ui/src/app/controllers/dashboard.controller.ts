@@ -63,9 +63,14 @@ export class DashboardControllerComponent implements OnInit {
       next: (response) => {
         this.allCompanies = response.companies;
         this.allSectors = response.sectors;
-        // Default selection: top tech companies
-        this.selectedIds = ['AAPL.US', 'MSFT.US', 'NVDA.US', 'GOOGL.US', 'META.US'];
+        // Default selection: first few available companies
+        const availableTickers = response.companies.map(c => c.ticker);
+        this.selectedIds = availableTickers.slice(0, Math.min(5, availableTickers.length));
         this.isLoading = false;
+
+        if (response.companies.length === 0) {
+          this.errorMessage = 'No companies with data available. Run the pipeline first to download data.';
+        }
       },
       error: () => {
         this.errorMessage = 'Failed to load companies. API may be unavailable.';

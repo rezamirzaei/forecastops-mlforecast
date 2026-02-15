@@ -35,23 +35,60 @@ class ForecastService:
         self._settings = get_settings()
 
     def get_available_series(self) -> list[str]:
-        """Get list of available series IDs for forecasting."""
+        """Get list of series IDs that have training data available."""
+        # First check if we have training data loaded or on disk
+        frame = self.pipeline.training_frame
+        if frame is None and self.pipeline.processed_data_path.exists():
+            try:
+                frame = pd.read_parquet(self.pipeline.processed_data_path)
+            except Exception:
+                frame = None
+
+        if frame is not None:
+            # Return only series that have data
+            return sorted(frame["unique_id"].unique().tolist())
+
+        # Fallback to config tickers if no data yet
         tickers = self._settings.data.tickers or list(SP500_TICKERS_STOOQ)
-        # Preserve order while preventing accidental duplicates in overrides.
         unique_tickers = list(dict.fromkeys(tickers))
         return [ticker.upper() for ticker in unique_tickers]
 
     def get_all_companies(self) -> list[dict[str, str]]:
-        """Get all S&P 500 companies with metadata."""
+        """Get S&P 500 companies that have training data available."""
+        available_series = set(self.get_available_series())
+
         companies = []
         for ticker in SP500_TICKERS_STOOQ:
-            ticker_upper = ticker.upper().replace(".US", "")
-            info = get_company_info(ticker_upper)
+            ticker_upper = ticker.upper()
+            if ticker_upper not in available_series:
+                continue  # Skip companies without data
+
+            symbol = ticker_upper.replace(".US", "")
+            info = get_company_info(symbol)
             companies.append({
-                "ticker": ticker.upper(),
-                "symbol": ticker_upper,
-                "name": info.name if info else ticker_upper,
+                "ticker": ticker_upper,
+                "symbol": symbol,
+                "name": info.name if info else symbol,
                 "sector": info.sector if info else "Unknown",
+                "has_data": True,
+            })
+        return companies
+
+    def get_all_sp500_companies(self) -> list[dict[str, str]]:
+        """Get ALL S&P 500 companies (for reference, may not have data)."""
+        available_series = set(self.get_available_series())
+
+        companies = []
+        for ticker in SP500_TICKERS_STOOQ:
+            ticker_upper = ticker.upper()
+            symbol = ticker_upper.replace(".US", "")
+            info = get_company_info(symbol)
+            companies.append({
+                "ticker": ticker_upper,
+                "symbol": symbol,
+                "name": info.name if info else symbol,
+                "sector": info.sector if info else "Unknown",
+                "has_data": ticker_upper in available_series,
             })
         return companies
 
