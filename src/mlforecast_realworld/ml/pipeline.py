@@ -383,13 +383,15 @@ class ForecastPipeline:
                 after_predict_callback=after_predict_clip,
             )
 
+        # Reconstruct prices from returns BEFORE ensemble calculation
+        # This ensures ensemble is mean of prices, not mean of returns
+        if return_prices and self.data_engineer.target_type.value != "price":
+            predictions = self._reconstruct_prices(predictions)
+
+        # Add ensemble mean AFTER price reconstruction
         predictions = self._add_ensemble_column(
             predictions, model_names=list(self.forecaster.models.keys())
         )
-
-        # Reconstruct prices from returns if needed
-        if return_prices and self.data_engineer.target_type.value != "price":
-            predictions = self._reconstruct_prices(predictions)
 
         if ids:
             predictions = predictions[predictions["unique_id"].isin(requested_ids)].reset_index(

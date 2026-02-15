@@ -24,6 +24,7 @@ dependencies = [
   "pyarrow>=19.0.1",
   "python-dotenv>=1.0.1",
   "typer>=0.15.2",
+  "pytest>=9.0.2",
 ]
 
 [project.optional-dependencies]
