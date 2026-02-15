@@ -13,6 +13,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from mlforecast_realworld.api.main import create_app
+from mlforecast_realworld.data.sp500 import SP500_TICKERS_STOOQ
 
 
 @pytest.fixture
@@ -67,7 +68,8 @@ class TestSeriesEndpoint:
         assert "series" in data
         assert "count" in data
         assert len(data["series"]) == data["count"]
-        # Should include default tickers in uppercase
+        # Should include full default S&P 500 universe in uppercase.
+        assert data["count"] == len(SP500_TICKERS_STOOQ)
         assert "AAPL.US" in data["series"]
 
 
@@ -213,4 +215,3 @@ class TestOpenAPIDocumentation:
         """Swagger docs should be accessible."""
         response = client.get("/docs")
         assert response.status_code == 200
-

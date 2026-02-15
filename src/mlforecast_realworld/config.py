@@ -14,12 +14,14 @@ from typing import Literal
 from pydantic import BaseModel, Field, HttpUrl, PositiveInt
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from mlforecast_realworld.data.sp500 import SP500_TICKERS_STOOQ
+
 
 class DataSourceSettings(BaseModel):
     """Configuration for data sources."""
 
     tickers: list[str] = Field(
-        default_factory=lambda: ["aapl.us", "msft.us", "goog.us", "amzn.us", "meta.us"]
+        default_factory=lambda: list(SP500_TICKERS_STOOQ)
     )
     start_date: date = date(2019, 1, 1)
     end_date: date | None = None

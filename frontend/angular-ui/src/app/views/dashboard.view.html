@@ -1,16 +1,69 @@
 <section class="dashboard-shell">
   <header class="hero">
     <h1>MLForecast Control Room</h1>
-    <p>Run the full data+ML pipeline and inspect real-world forecasts from one interface.</p>
+    <p>S&amp;P 500 stock price forecasting with multi-model ensemble ML pipeline.</p>
   </header>
 
+  <!-- Company Selection Panel -->
+  <section class="panel company-selection">
+    <h2>Select Companies ({{ selectedIds.length }} selected)</h2>
+
+    <div class="filters">
+      <label>
+        Search
+        <input type="text" [(ngModel)]="searchQuery" placeholder="Search by ticker or name..." />
+      </label>
+      <label>
+        Sector
+        <select [(ngModel)]="selectedSector">
+          <option value="">All Sectors</option>
+          <option *ngFor="let sector of allSectors" [value]="sector">{{ sector }}</option>
+        </select>
+      </label>
+      <div class="selection-actions">
+        <button type="button" class="btn-secondary" (click)="selectAll()">Select All ({{ filteredCompanies.length }})</button>
+        <button type="button" class="btn-secondary" (click)="clearSelection()">Clear</button>
+      </div>
+    </div>
+
+    <div class="company-grid" *ngIf="!isLoading">
+      <div
+        *ngFor="let company of filteredCompanies | slice:0:100"
+        class="company-card"
+        [class.selected]="isSelected(company.ticker)"
+        (click)="toggleSelection(company.ticker)">
+        <span class="ticker">{{ company.symbol }}</span>
+        <span class="name">{{ company.name }}</span>
+        <span class="sector">{{ company.sector }}</span>
+      </div>
+    </div>
+    <p class="loading" *ngIf="isLoading">Loading S&amp;P 500 companies...</p>
+    <p class="table-note" *ngIf="filteredCompanies.length > 100">
+      Showing first 100 of {{ filteredCompanies.length }} companies. Use search to narrow results.
+    </p>
+
+    <!-- Selected companies summary -->
+    <div class="selected-summary" *ngIf="selectedIds.length > 0">
+      <strong>Selected:</strong>
+      <span class="selected-tags">
+        <span *ngFor="let id of selectedIds | slice:0:10" class="tag" (click)="toggleSelection(id)">
+          {{ id.replace('.US', '') }} ×
+        </span>
+        <span *ngIf="selectedIds.length > 10" class="tag more">+{{ selectedIds.length - 10 }} more</span>
+      </span>
+    </div>
+  </section>
+
+  <!-- Pipeline Controls -->
   <section class="panel actions">
-    <button type="button" (click)="runPipeline()" [disabled]="isRunningPipeline">
-      {{ isRunningPipeline ? 'Running Pipeline...' : 'Run Pipeline' }}
-    </button>
-    <button type="button" (click)="loadMetrics(true)" [disabled]="isLoadingMetrics">
-      {{ isLoadingMetrics ? 'Loading Metrics...' : 'Refresh Metrics' }}
-    </button>
+    <div class="action-buttons">
+      <button type="button" (click)="runPipeline()" [disabled]="isRunningPipeline">
+        {{ isRunningPipeline ? 'Running Pipeline...' : 'Run Pipeline' }}
+      </button>
+      <button type="button" (click)="loadMetrics(true)" [disabled]="isLoadingMetrics">
+        {{ isLoadingMetrics ? 'Loading...' : 'Refresh Metrics' }}
+      </button>
+    </div>
 
     <div class="forecast-form">
       <label>
@@ -24,19 +77,12 @@
       </label>
 
       <label>
-        Levels (comma-separated)
+        Confidence Levels
         <input type="text" [(ngModel)]="levels" placeholder="80,95" />
       </label>
 
-      <label>
-        Series
-        <select multiple [(ngModel)]="selectedIds">
-          <option *ngFor="let id of availableIds" [value]="id">{{ id }}</option>
-        </select>
-      </label>
-
-      <button type="button" (click)="runForecast()" [disabled]="isForecasting || !summary">
-        {{ isForecasting ? 'Forecasting...' : 'Forecast' }}
+      <button type="button" class="btn-primary" (click)="runForecast()" [disabled]="isForecasting || !summary || selectedIds.length === 0">
+        {{ isForecasting ? 'Forecasting...' : 'Generate Forecast' }}
       </button>
     </div>
   </section>
@@ -120,7 +166,7 @@
       </tbody>
     </table>
     <p class="table-note" *ngIf="records.length > 50">
-      Showing first 50 of {{ records.length }} records. View chart for full visualization.
+      Showing first 50 of {{ records.length }} records.
     </p>
   </section>
 

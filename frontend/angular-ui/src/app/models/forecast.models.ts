@@ -11,6 +11,19 @@ export interface SeriesResponse {
   count: number;
 }
 
+export interface SP500Company {
+  ticker: string;
+  symbol: string;
+  name: string;
+  sector: string;
+}
+
+export interface CompaniesResponse {
+  companies: SP500Company[];
+  sectors: string[];
+  count: number;
+}
+
 export interface ForecastRequest {
   horizon: number;
   ids?: string[];

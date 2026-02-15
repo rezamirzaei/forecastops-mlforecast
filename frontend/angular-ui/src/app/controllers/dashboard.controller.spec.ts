@@ -5,6 +5,25 @@ import { DashboardControllerComponent } from './dashboard.controller';
 import { ForecastApiService } from '../services/forecast-api.service';
 
 class MockApiService {
+  getAvailableSeries() {
+    return of({
+      series: ['AAPL.US', 'MSFT.US', 'GOOG.US'],
+      count: 3,
+    });
+  }
+
+  getCompanies() {
+    return of({
+      companies: [
+        { ticker: 'AAPL.US', symbol: 'AAPL', name: 'Apple Inc.', sector: 'Technology' },
+        { ticker: 'MSFT.US', symbol: 'MSFT', name: 'Microsoft Corporation', sector: 'Technology' },
+        { ticker: 'GOOG.US', symbol: 'GOOG', name: 'Alphabet Inc.', sector: 'Communication Services' },
+      ],
+      sectors: ['Technology', 'Communication Services'],
+      count: 3,
+    });
+  }
+
   runPipeline() {
     return of({
       rows: 100,
@@ -54,6 +73,32 @@ describe('DashboardControllerComponent', () => {
 
     fixture = TestBed.createComponent(DashboardControllerComponent);
     component = fixture.componentInstance;
+    fixture.detectChanges(); // triggers ngOnInit
+  });
+
+  it('loads companies on init', () => {
+    expect(component.allCompanies.length).toBe(3);
+    expect(component.allSectors.length).toBe(2);
+  });
+
+  it('filters companies by search query', () => {
+    component.searchQuery = 'apple';
+    expect(component.filteredCompanies.length).toBe(1);
+    expect(component.filteredCompanies[0].symbol).toBe('AAPL');
+  });
+
+  it('filters companies by sector', () => {
+    component.selectedSector = 'Technology';
+    expect(component.filteredCompanies.length).toBe(2);
+  });
+
+  it('toggles company selection', () => {
+    component.selectedIds = ['AAPL.US'];
+    component.toggleSelection('AAPL.US');
+    expect(component.selectedIds).not.toContain('AAPL.US');
+
+    component.toggleSelection('MSFT.US');
+    expect(component.selectedIds).toContain('MSFT.US');
   });
 
   it('runs pipeline and stores summary', () => {
@@ -70,6 +115,7 @@ describe('DashboardControllerComponent', () => {
       end: '2024-01-10',
       trained_models: ['lin_reg'],
     };
+    component.selectedIds = ['AAPL.US'];
     component.runForecast();
     expect(component.records.length).toBe(1);
     expect(component.historyRecords.length).toBe(1);

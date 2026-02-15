@@ -3,6 +3,7 @@ import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import {
+  CompaniesResponse,
   ForecastRequest,
   ForecastResponse,
   HistoryResponse,
@@ -19,6 +20,10 @@ export class ForecastApiService {
 
   getAvailableSeries(): Observable<SeriesResponse> {
     return this.http.get<SeriesResponse>(`${this.baseUrl}/series`);
+  }
+
+  getCompanies(): Observable<CompaniesResponse> {
+    return this.http.get<CompaniesResponse>(`${this.baseUrl}/companies`);
   }
 
   runPipeline(download = false): Observable<PipelineSummary> {

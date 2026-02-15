@@ -65,6 +65,7 @@ Automatically computed per series:
 ## What This Project Includes
 
 - Real data download from `stooq.com` (multiple tickers).
+- Full S&P 500 symbol universe as the default ticker set (`src/mlforecast_realworld/data/sp500.py`).
 - Clean, reusable Python package under `src/`.
 - Strict Pydantic validation for configs, records, requests, and responses.
 - ML pipeline with broad `mlforecast` feature usage.
@@ -149,11 +150,15 @@ npm start
 ## API endpoints
 
 - `GET /health`
+- `GET /series`
 - `POST /pipeline/run?download=true|false`
 - `GET /pipeline/metrics?run_if_missing=true|false`
 - `POST /forecast`
 
 Call `POST /pipeline/run` before `POST /forecast` to ensure model artifacts are trained and persisted.
+
+By default, `/series` returns the full S&P 500 symbol universe (503 tradable symbols including
+multi-class listings like `BRK-B.US` and `GOOGL.US`). You can override via `DATA__TICKERS`.
 
 Example request to `/forecast`:
 

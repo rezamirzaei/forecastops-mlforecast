@@ -7,6 +7,8 @@ from fastapi.testclient import TestClient
 
 from mlforecast_realworld.api.main import create_app
 from mlforecast_realworld.api.service import ForecastService
+from mlforecast_realworld.config import AppSettings
+from mlforecast_realworld.data.sp500 import SP500_TICKERS_STOOQ
 from mlforecast_realworld.schemas.records import ForecastRequest
 
 
@@ -57,6 +59,15 @@ def test_forecast_service_get_metrics() -> None:
     metrics = service.get_metrics(run_if_missing=True)
     assert len(metrics) == 1
     assert metrics[0]["model"] == "lin_reg"
+
+
+def test_forecast_service_series_falls_back_to_sp500_when_tickers_empty() -> None:
+    service = ForecastService(pipeline=DummyPipeline())
+    service._settings = AppSettings(data={"tickers": []})
+    series = service.get_available_series()
+    assert len(series) == len(SP500_TICKERS_STOOQ)
+    assert "AAPL.US" in series
+    assert "MSFT.US" in series
 
 
 def test_api_endpoints(monkeypatch) -> None:

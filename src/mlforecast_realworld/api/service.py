@@ -12,6 +12,11 @@ from typing import Any
 import pandas as pd
 
 from mlforecast_realworld.config import get_settings
+from mlforecast_realworld.data.sp500 import (
+    SP500_TICKERS_STOOQ,
+    get_all_sectors,
+    get_company_info,
+)
 from mlforecast_realworld.ml.pipeline import ForecastPipeline
 from mlforecast_realworld.schemas.records import (
     AccuracyMetric,
@@ -31,8 +36,28 @@ class ForecastService:
 
     def get_available_series(self) -> list[str]:
         """Get list of available series IDs for forecasting."""
-        # Return configured tickers in uppercase format
-        return [ticker.upper() for ticker in self._settings.data.tickers]
+        tickers = self._settings.data.tickers or list(SP500_TICKERS_STOOQ)
+        # Preserve order while preventing accidental duplicates in overrides.
+        unique_tickers = list(dict.fromkeys(tickers))
+        return [ticker.upper() for ticker in unique_tickers]
+
+    def get_all_companies(self) -> list[dict[str, str]]:
+        """Get all S&P 500 companies with metadata."""
+        companies = []
+        for ticker in SP500_TICKERS_STOOQ:
+            ticker_upper = ticker.upper().replace(".US", "")
+            info = get_company_info(ticker_upper)
+            companies.append({
+                "ticker": ticker.upper(),
+                "symbol": ticker_upper,
+                "name": info.name if info else ticker_upper,
+                "sector": info.sector if info else "Unknown",
+            })
+        return companies
+
+    def get_all_sectors(self) -> list[str]:
+        """Get all unique sectors."""
+        return get_all_sectors()
 
     def run_pipeline(self, download: bool = True) -> PipelineSummary:
         self.pipeline.run_full_pipeline(download=download)

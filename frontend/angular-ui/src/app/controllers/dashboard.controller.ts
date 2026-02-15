@@ -5,7 +5,13 @@ import { forkJoin } from 'rxjs';
 
 import { ForecastChartComponent } from '../components/forecast-chart.component';
 import { MetricsChartComponent } from '../components/metrics-chart.component';
-import { AccuracyMetric, ForecastRecord, HistoryRecord, PipelineSummary } from '../models/forecast.models';
+import {
+  AccuracyMetric,
+  ForecastRecord,
+  HistoryRecord,
+  PipelineSummary,
+  SP500Company,
+} from '../models/forecast.models';
 import { ForecastApiService } from '../services/forecast-api.service';
 
 @Component({
@@ -16,19 +22,31 @@ import { ForecastApiService } from '../services/forecast-api.service';
   styleUrls: ['../views/dashboard.view.scss'],
 })
 export class DashboardControllerComponent implements OnInit {
-  availableIds: string[] = [];
-  availableModels: string[] = [];
+  // Company data
+  allCompanies: SP500Company[] = [];
+  allSectors: string[] = [];
 
+  // Filters
+  searchQuery = '';
+  selectedSector = '';
+
+  // Selection
+  selectedIds: string[] = [];
+  availableModels: string[] = [];
+  selectedModel = '';
+
+  // Forecast params
   horizon = 14;
   historyDays = 60;
   levels = '80,95';
-  selectedIds: string[] = [];
-  selectedModel = '';
+
+  // State
   summary: PipelineSummary | null = null;
   metrics: AccuracyMetric[] = [];
   records: ForecastRecord[] = [];
   historyRecords: HistoryRecord[] = [];
   errorMessage = '';
+  isLoading = false;
   isRunningPipeline = false;
   isForecasting = false;
   isLoadingMetrics = false;
@@ -36,21 +54,68 @@ export class DashboardControllerComponent implements OnInit {
   constructor(private readonly api: ForecastApiService) {}
 
   ngOnInit(): void {
-    this.loadAvailableSeries();
+    this.loadCompanies();
   }
 
-  loadAvailableSeries(): void {
-    this.api.getAvailableSeries().subscribe({
+  loadCompanies(): void {
+    this.isLoading = true;
+    this.api.getCompanies().subscribe({
       next: (response) => {
-        this.availableIds = response.series;
-        this.selectedIds = response.series.slice(0, 3);
+        this.allCompanies = response.companies;
+        this.allSectors = response.sectors;
+        // Default selection: top tech companies
+        this.selectedIds = ['AAPL.US', 'MSFT.US', 'NVDA.US', 'GOOGL.US', 'META.US'];
+        this.isLoading = false;
       },
       error: () => {
-        // Fallback to defaults if API not available
-        this.availableIds = ['AAPL.US', 'MSFT.US', 'GOOG.US', 'AMZN.US', 'META.US'];
-        this.selectedIds = this.availableIds.slice(0, 3);
+        this.errorMessage = 'Failed to load companies. API may be unavailable.';
+        this.isLoading = false;
       },
     });
+  }
+
+  get filteredCompanies(): SP500Company[] {
+    let result = this.allCompanies;
+
+    // Filter by sector
+    if (this.selectedSector) {
+      result = result.filter(c => c.sector === this.selectedSector);
+    }
+
+    // Filter by search query (ticker or name)
+    if (this.searchQuery.trim()) {
+      const query = this.searchQuery.trim().toLowerCase();
+      result = result.filter(c =>
+        c.ticker.toLowerCase().includes(query) ||
+        c.name.toLowerCase().includes(query) ||
+        c.symbol.toLowerCase().includes(query)
+      );
+    }
+
+    return result;
+  }
+
+  isSelected(ticker: string): boolean {
+    return this.selectedIds.includes(ticker);
+  }
+
+  toggleSelection(ticker: string): void {
+    if (this.isSelected(ticker)) {
+      this.selectedIds = this.selectedIds.filter(id => id !== ticker);
+    } else {
+      this.selectedIds = [...this.selectedIds, ticker];
+    }
+  }
+
+  selectAll(): void {
+    const filtered = this.filteredCompanies.map(c => c.ticker);
+    // Add all filtered that aren't already selected
+    const newIds = new Set([...this.selectedIds, ...filtered]);
+    this.selectedIds = Array.from(newIds);
+  }
+
+  clearSelection(): void {
+    this.selectedIds = [];
   }
 
   runPipeline(): void {
@@ -88,10 +153,13 @@ export class DashboardControllerComponent implements OnInit {
       this.errorMessage = 'Run the pipeline first to train and persist models.';
       return;
     }
+    if (this.selectedIds.length === 0) {
+      this.errorMessage = 'Please select at least one company.';
+      return;
+    }
     this.isForecasting = true;
     this.errorMessage = '';
 
-    // Load both forecast and history in parallel
     forkJoin({
       forecast: this.api.forecast({
         horizon: this.horizon,

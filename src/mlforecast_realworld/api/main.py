@@ -87,6 +87,17 @@ def create_app() -> FastAPI:
         series = service.get_available_series()
         return {"series": series, "count": len(series)}
 
+    @app.get("/companies", tags=["forecast"])
+    def available_companies() -> dict[str, Any]:
+        """Get all S&P 500 companies with metadata for UI selection."""
+        companies = service.get_all_companies()
+        sectors = service.get_all_sectors()
+        return {
+            "companies": companies,
+            "sectors": sectors,
+            "count": len(companies),
+        }
+
     @app.post("/pipeline/run", response_model=PipelineSummary, tags=["pipeline"])
     def run_pipeline(download: bool = True) -> PipelineSummary:
         """Run the full ML pipeline: download data, engineer features, train models."""

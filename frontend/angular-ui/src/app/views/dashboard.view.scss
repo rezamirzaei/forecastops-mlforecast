@@ -47,9 +47,15 @@
   gap: 0.8rem;
 }
 
+.action-buttons {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
 .forecast-form {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 0.8rem;
   align-items: end;
 }
@@ -59,6 +65,12 @@ label {
   gap: 0.4rem;
   font-size: 0.9rem;
   font-weight: 600;
+}
+
+label small {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: rgba(20, 35, 59, 0.7);
 }
 
 input,
@@ -81,6 +93,22 @@ button {
   cursor: pointer;
   font-weight: 600;
   transition: transform 140ms ease, opacity 140ms ease;
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid rgba(20, 35, 59, 0.3);
+  font-size: 0.8rem;
+  padding: 0.4rem 0.6rem;
+}
+
+.btn-secondary:hover {
+  background: rgba(20, 35, 59, 0.05);
+}
+
+.btn-primary {
+  background: var(--accent);
 }
 
 button:disabled {
@@ -195,4 +223,117 @@ button:not(:disabled):hover {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* Company Selection Styles */
+.company-selection h2 {
+  margin: 0 0 1rem;
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 0.8rem;
+  margin-bottom: 1rem;
+  align-items: end;
+}
+
+.selection-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.company-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.5rem;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 0.25rem;
+}
+
+.company-card {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid rgba(20, 35, 59, 0.15);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 120ms ease;
+  background: white;
+}
+
+.company-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 2px 8px rgba(196, 81, 45, 0.15);
+}
+
+.company-card.selected {
+  background: rgba(196, 81, 45, 0.1);
+  border-color: var(--accent);
+}
+
+.company-card .ticker {
+  font-weight: 700;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.9rem;
+  color: var(--accent);
+}
+
+.company-card .name {
+  font-size: 0.75rem;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.company-card .sector {
+  font-size: 0.65rem;
+  color: rgba(20, 35, 59, 0.6);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.selected-summary {
+  margin-top: 1rem;
+  padding-top: 0.8rem;
+  border-top: 1px dashed rgba(20, 35, 59, 0.2);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.selected-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.tag {
+  background: var(--accent);
+  color: white;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-family: 'IBM Plex Mono', monospace;
+  cursor: pointer;
+  transition: opacity 100ms;
+}
+
+.tag:hover {
+  opacity: 0.8;
+}
+
+.tag.more {
+  background: rgba(20, 35, 59, 0.2);
+  color: var(--ink);
+  cursor: default;
+}
+
+.loading {
+  text-align: center;
+  padding: 2rem;
+  color: rgba(20, 35, 59, 0.6);
 }
