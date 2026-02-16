@@ -9,15 +9,16 @@ from __future__ import annotations
 import logging
 import threading
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
-from typing import Any, Callable
+from enum import StrEnum
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
-class TaskStatus(str, Enum):
+class TaskStatus(StrEnum):
     """Status of a background task."""
     PENDING = "pending"
     RUNNING = "running"
@@ -25,7 +26,7 @@ class TaskStatus(str, Enum):
     FAILED = "failed"
 
 
-class TaskType(str, Enum):
+class TaskType(StrEnum):
     """Type of background task."""
     DATA_UPDATE = "data_update"
     MODEL_TRAINING = "model_training"
@@ -216,4 +217,5 @@ def get_task_manager() -> BackgroundTaskManager:
     if _task_manager is None:
         _task_manager = BackgroundTaskManager()
     return _task_manager
+
 

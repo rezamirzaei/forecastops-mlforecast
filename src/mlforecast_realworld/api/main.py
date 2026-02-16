@@ -30,8 +30,12 @@ class TaskStartRequest(BaseModel):
 
 class TrainingRequest(BaseModel):
     """Request body for selective model training."""
-    tickers: list[str] | None = Field(default=None, description="Tickers to train on (all if empty)")
-    download: bool = Field(default=False, description="Whether to download fresh data first")
+    tickers: list[str] | None = Field(
+        default=None, description="Tickers to train on (all if empty)"
+    )
+    download: bool = Field(
+        default=False, description="Whether to download fresh data first"
+    )
 
 logger = get_logger(__name__)
 

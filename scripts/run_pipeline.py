@@ -17,7 +17,6 @@ import argparse
 import logging
 import sys
 import time
-from pathlib import Path
 from typing import Any
 
 # Setup logging with progress info
@@ -89,14 +88,14 @@ def load_existing_artifacts(pipeline: Any) -> dict[str, Any]:
     print("\n" + "=" * 60)
     print("  Artifacts Loaded Successfully!")
     print("=" * 60)
-    print(f"\n  Summary:")
+    print("\n  Summary:")
     print(f"    • Data rows:      {len(frame):,}")
     print(f"    • Companies:      {frame['unique_id'].nunique()}")
     print(f"    • Date range:     {frame['ds'].min().date()} to {frame['ds'].max().date()}")
     print(f"    • Models:         {len(model_names)}")
     print(f"    • Best model:     {best_model} (sMAPE: {best_smape:.4f})")
     print(f"    • Load time:      {total_time:.1f}s")
-    print(f"\n  Artifacts loaded from:")
+    print("\n  Artifacts loaded from:")
     print(f"    • Model:    {pipeline.model_path}")
     print(f"    • Data:     {pipeline.processed_data_path}")
     print(f"    • CV:       {pipeline.cv_summary_path}")
@@ -170,7 +169,7 @@ def run_pipeline(download: bool = False, force: bool = False) -> dict[str, Any]:
     logger.info("Step 2/5: Training models")
     step_start = time.time()
 
-    fitted_values = pipeline.fit(frame)
+    pipeline.fit(frame)  # Fitted values stored internally
 
     model_names = list(pipeline.forecaster.models.keys()) if pipeline.forecaster else []
     logger.info(
@@ -222,7 +221,7 @@ def run_pipeline(download: bool = False, force: bool = False) -> dict[str, Any]:
     print("\n" + "=" * 60)
     print("  Pipeline Complete!")
     print("=" * 60)
-    print(f"\n  Summary:")
+    print("\n  Summary:")
     print(f"    • Data rows:      {len(frame):,}")
     print(f"    • Companies:      {frame['unique_id'].nunique()}")
     print(f"    • Date range:     {frame['ds'].min().date()} to {frame['ds'].max().date()}")
@@ -230,7 +229,7 @@ def run_pipeline(download: bool = False, force: bool = False) -> dict[str, Any]:
     print(f"    • Best model:     {best_model} (sMAPE: {best_smape:.4f})")
     print(f"    • Forecast rows:  {len(forecasts):,}")
     print(f"    • Total time:     {total_time:.1f}s")
-    print(f"\n  Artifacts saved to:")
+    print("\n  Artifacts saved to:")
     print(f"    • Model:    {model_path}")
     print(f"    • Data:     {pipeline.processed_data_path}")
     print(f"    • Report:   {pipeline.report_path}")

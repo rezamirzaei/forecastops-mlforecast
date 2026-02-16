@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import logging
 import sys
-from pathlib import Path
 
 # Setup logging
 logging.basicConfig(
@@ -74,7 +73,7 @@ def main():
         cv_df, cv_summary = pipeline.cross_validate(frame)
         best_model = cv_summary.iloc[0]["model"]
         best_smape = cv_summary.iloc[0]["smape"]
-        logger.info(f"✓ Cross-validation complete")
+        logger.info("✓ Cross-validation complete")
         logger.info(f"  Best model: {best_model} (sMAPE: {best_smape:.4f})")
 
         # Step 4: Save model

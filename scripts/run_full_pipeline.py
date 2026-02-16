@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 """Run the full pipeline to download data and train models."""
-from mlforecast_realworld.ml.pipeline import ForecastPipeline
 from mlforecast_realworld.config import get_settings
+from mlforecast_realworld.ml.pipeline import ForecastPipeline
+
 
 def main():
     # Clear cache to reload settings
@@ -26,7 +27,7 @@ def main():
     print(f"   Trained models: {list(pipeline.forecaster.models.keys())}")
 
     print("3. Running cross-validation...")
-    cv_summary = pipeline.cross_validate()
+    pipeline.cross_validate()  # Results saved to artifacts
     print("   CV complete")
 
     print("4. Saving model...")

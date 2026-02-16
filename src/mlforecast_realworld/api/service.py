@@ -13,9 +13,7 @@ from typing import Any
 import pandas as pd
 
 from mlforecast_realworld.api.background_tasks import (
-    BackgroundTaskManager,
     TaskInfo,
-    TaskStatus,
     TaskType,
     get_task_manager,
 )
@@ -68,7 +66,10 @@ class ForecastService:
         if self.pipeline.model_path.exists():
             try:
                 self.pipeline.load_model()
-                model_names = list(self.pipeline.forecaster.models.keys()) if self.pipeline.forecaster else []
+                if self.pipeline.forecaster:
+                    model_names = list(self.pipeline.forecaster.models.keys())
+                else:
+                    model_names = []
                 logger.info("Loaded existing model: %s", ", ".join(model_names))
             except Exception as e:
                 logger.warning("Could not load model: %s", e)
