@@ -6,18 +6,15 @@ import { ForecastApiService } from '../services/forecast-api.service';
 
 class MockApiService {
   getAvailableSeries() {
-    return of({
-      series: ['AAPL.US', 'MSFT.US', 'GOOG.US'],
-      count: 3,
-    });
+    return of({ series: ['AAPL.US', 'MSFT.US', 'GOOG.US'], count: 3 });
   }
 
   getCompanies() {
     return of({
       companies: [
-        { ticker: 'AAPL.US', symbol: 'AAPL', name: 'Apple Inc.', sector: 'Technology' },
-        { ticker: 'MSFT.US', symbol: 'MSFT', name: 'Microsoft Corporation', sector: 'Technology' },
-        { ticker: 'GOOG.US', symbol: 'GOOG', name: 'Alphabet Inc.', sector: 'Communication Services' },
+        { ticker: 'AAPL.US', symbol: 'AAPL', name: 'Apple Inc.', sector: 'Technology', has_data: true },
+        { ticker: 'MSFT.US', symbol: 'MSFT', name: 'Microsoft', sector: 'Technology', has_data: true },
+        { ticker: 'GOOG.US', symbol: 'GOOG', name: 'Alphabet', sector: 'Communication Services', has_data: true },
       ],
       sectors: ['Technology', 'Communication Services'],
       count: 3,
@@ -25,39 +22,109 @@ class MockApiService {
   }
 
   runPipeline() {
-    return of({
-      rows: 100,
-      unique_series: 2,
-      start: '2024-01-01',
-      end: '2024-01-10',
-      trained_models: ['lin_reg'],
-    });
+    return of({ rows: 100, unique_series: 2, start: '2024-01-01', end: '2024-01-10', trained_models: ['lin_reg'] });
   }
 
   getMetrics() {
-    return of({
-      metrics: [{ model: 'lin_reg', smape: 10.2, wape: 9.1 }],
-      best_model: 'lin_reg',
-      count: 1,
-    });
+    return of({ metrics: [{ model: 'lin_reg', smape: 10.2, wape: 9.1 }], best_model: 'lin_reg', count: 1 });
   }
 
   forecast() {
-    return of({
-      records: [
-        { unique_id: 'AAPL.US', ds: '2024-01-11', model_name: 'lin_reg', value: 123.4 },
-      ],
-      count: 1,
-    });
+    return of({ records: [{ unique_id: 'AAPL.US', ds: '2024-01-11', model_name: 'lin_reg', value: 123.4 }], count: 1 });
   }
 
   getHistory() {
+    return of({ records: [{ unique_id: 'AAPL.US', ds: '2024-01-10', value: 120.0 }], count: 1 });
+  }
+
+  getSystemStatus() {
     return of({
-      records: [
-        { unique_id: 'AAPL.US', ds: '2024-01-10', value: 120.0 },
-      ],
-      count: 1,
+      has_data: true,
+      has_model: true,
+      is_busy: false,
+      current_task: null,
+      data_stats: { rows: 50000, companies: 100, start_date: '2019-01-01', end_date: '2024-01-10' },
+      ready_for_predictions: true,
     });
+  }
+
+  startDataUpdate() {
+    return of({
+      task: {
+        task_id: 'abc123',
+        task_type: 'data_update',
+        status: 'running',
+        created_at: '2024-01-10T10:00:00',
+        started_at: '2024-01-10T10:00:01',
+        completed_at: null,
+        progress: 10,
+        message: 'Downloading...',
+        result: {},
+        error: null,
+        tickers_requested: [],
+      },
+      message: 'Data update started in background',
+    });
+  }
+
+  startModelTraining() {
+    return of({
+      task: {
+        task_id: 'abc124',
+        task_type: 'model_training',
+        status: 'running',
+        created_at: '2024-01-10T10:00:00',
+        started_at: '2024-01-10T10:00:01',
+        completed_at: null,
+        progress: 10,
+        message: 'Training...',
+        result: {},
+        error: null,
+        tickers_requested: [],
+      },
+      message: 'Model training started in background',
+    });
+  }
+
+  startFullPipeline() {
+    return of({
+      task: {
+        task_id: 'abc125',
+        task_type: 'full_pipeline',
+        status: 'running',
+        created_at: '2024-01-10T10:00:00',
+        started_at: '2024-01-10T10:00:01',
+        completed_at: null,
+        progress: 5,
+        message: 'Starting...',
+        result: {},
+        error: null,
+        tickers_requested: [],
+      },
+      message: 'Full pipeline started in background',
+    });
+  }
+
+  getTaskStatus() {
+    return of({
+      task: {
+        task_id: 'abc123',
+        task_type: 'data_update',
+        status: 'completed',
+        created_at: '2024-01-10T10:00:00',
+        started_at: '2024-01-10T10:00:01',
+        completed_at: '2024-01-10T10:05:00',
+        progress: 100,
+        message: 'Done',
+        result: { rows: 50000, companies: 100 },
+        error: null,
+        tickers_requested: [],
+      },
+    });
+  }
+
+  getAllTasks() {
+    return of({ tasks: [], count: 0 });
   }
 }
 
@@ -70,15 +137,16 @@ describe('DashboardControllerComponent', () => {
       imports: [DashboardControllerComponent],
       providers: [{ provide: ForecastApiService, useClass: MockApiService }],
     }).compileComponents();
-
     fixture = TestBed.createComponent(DashboardControllerComponent);
     component = fixture.componentInstance;
-    fixture.detectChanges(); // triggers ngOnInit
+    fixture.detectChanges();
   });
 
-  it('loads companies on init', () => {
+  it('loads companies and system status on init', () => {
     expect(component.allCompanies.length).toBe(3);
     expect(component.allSectors.length).toBe(2);
+    expect(component.systemStatus).toBeTruthy();
+    expect(component.systemStatus?.ready_for_predictions).toBe(true);
   });
 
   it('filters companies by search query', () => {
@@ -96,28 +164,41 @@ describe('DashboardControllerComponent', () => {
     component.selectedIds = ['AAPL.US'];
     component.toggleSelection('AAPL.US');
     expect(component.selectedIds).not.toContain('AAPL.US');
-
     component.toggleSelection('MSFT.US');
     expect(component.selectedIds).toContain('MSFT.US');
   });
 
-  it('runs pipeline and stores summary', () => {
+  it('starts full pipeline as background task', () => {
     component.runPipeline();
-    expect(component.summary?.rows).toBe(100);
-    expect(component.metrics.length).toBe(1);
+    expect(component.currentTask).toBeTruthy();
+    expect(component.currentTask?.task_type).toBe('full_pipeline');
+    expect(component.successMessage).toContain('background');
   });
 
   it('runs forecast and stores records', () => {
-    component.summary = {
-      rows: 100,
-      unique_series: 2,
-      start: '2024-01-01',
-      end: '2024-01-10',
-      trained_models: ['lin_reg'],
+    component.systemStatus = {
+      has_data: true,
+      has_model: true,
+      is_busy: false,
+      current_task: null,
+      data_stats: { rows: 100, companies: 2, start_date: '2024-01-01', end_date: '2024-01-10' },
+      ready_for_predictions: true,
     };
     component.selectedIds = ['AAPL.US'];
     component.runForecast();
     expect(component.records.length).toBe(1);
     expect(component.historyRecords.length).toBe(1);
+  });
+
+  it('starts data update as background task', () => {
+    component.startDataUpdate();
+    expect(component.currentTask).toBeTruthy();
+    expect(component.currentTask?.task_type).toBe('data_update');
+  });
+
+  it('sets training tickers from selection', () => {
+    component.selectedIds = ['AAPL.US', 'MSFT.US'];
+    component.setTrainingTickers();
+    expect(component.trainingTickers).toEqual(['AAPL.US', 'MSFT.US']);
   });
 });

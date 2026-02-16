@@ -4,15 +4,56 @@
     <p>S&amp;P 500 stock price forecasting with multi-model ensemble ML pipeline.</p>
   </header>
 
+  <!-- System Status Banner -->
+  <section class="panel status-panel" *ngIf="systemStatus">
+    <div class="status-grid">
+      <div class="status-item" [class.ready]="systemStatus.has_data">
+        <span class="status-icon">{{ systemStatus.has_data ? '✓' : '○' }}</span>
+        <span>Data {{ systemStatus.has_data ? 'Available' : 'Not Downloaded' }}</span>
+      </div>
+      <div class="status-item" [class.ready]="systemStatus.has_model">
+        <span class="status-icon">{{ systemStatus.has_model ? '✓' : '○' }}</span>
+        <span>Model {{ systemStatus.has_model ? 'Trained' : 'Not Trained' }}</span>
+      </div>
+      <div class="status-item" [class.ready]="systemStatus.ready_for_predictions">
+        <span class="status-icon">{{ systemStatus.ready_for_predictions ? '✓' : '○' }}</span>
+        <span>{{ systemStatus.ready_for_predictions ? 'Ready for Predictions' : 'Setup Required' }}</span>
+      </div>
+    </div>
+    <div class="data-stats" *ngIf="systemStatus.data_stats">
+      <small>
+        {{ systemStatus.data_stats.companies }} companies |
+        {{ systemStatus.data_stats.rows | number }} data points |
+        {{ systemStatus.data_stats.start_date | date:'mediumDate' }} - {{ systemStatus.data_stats.end_date | date:'mediumDate' }}
+      </small>
+    </div>
+  </section>
+
+  <!-- Background Task Progress -->
+  <section class="panel task-panel" *ngIf="currentTask && currentTask.status === 'running'">
+    <h3>
+      <span class="spinner"></span>
+      {{ currentTask.task_type === 'data_update' ? 'Downloading Data' :
+         currentTask.task_type === 'model_training' ? 'Training Model' : 'Running Pipeline' }}
+    </h3>
+    <div class="progress-bar">
+      <div class="progress-fill" [style.width.%]="currentTask.progress"></div>
+    </div>
+    <p class="task-message">{{ currentTask.message }} ({{ currentTask.progress | number:'1.0-0' }}%)</p>
+  </section>
+
+  <p class="success" *ngIf="successMessage">{{ successMessage }}</p>
+  <p class="error" *ngIf="errorMessage">{{ errorMessage }}</p>
+
   <!-- Company Selection Panel -->
   <section class="panel company-selection">
     <h2>Select Companies ({{ selectedIds.length }} selected of {{ allCompanies.length }} available)</h2>
 
     <p class="info-note" *ngIf="allCompanies.length > 0 && allCompanies.length < 500">
-      📊 Data available for {{ allCompanies.length }} companies. Run pipeline with "download=true" to add more.
+      📊 Data available for {{ allCompanies.length }} companies. Click "Update Data" to download more.
     </p>
     <p class="info-note warning" *ngIf="allCompanies.length === 0 && !isLoading">
-      ⚠️ No data available. Click "Run Pipeline" to download data and train models.
+      ⚠️ No data available. Click "Download & Train" to get started.
     </p>
 
     <div class="filters" *ngIf="allCompanies.length > 0">
@@ -63,13 +104,60 @@
 
   <!-- Pipeline Controls -->
   <section class="panel actions">
+    <h2>Pipeline Controls</h2>
+
     <div class="action-buttons">
-      <button type="button" (click)="runPipeline()" [disabled]="isRunningPipeline">
-        {{ isRunningPipeline ? 'Running Pipeline...' : 'Run Pipeline' }}
-      </button>
-      <button type="button" (click)="loadMetrics(true)" [disabled]="isLoadingMetrics">
-        {{ isLoadingMetrics ? 'Loading...' : 'Refresh Metrics' }}
-      </button>
+      <div class="button-group">
+        <button type="button" class="btn-primary" (click)="runPipeline(true)"
+                [disabled]="currentTask && currentTask.status === 'running'">
+          {{ currentTask?.status === 'running' ? 'Task Running...' : '🚀 Download & Train (Full Pipeline)' }}
+        </button>
+      </div>
+
+      <div class="button-group">
+        <button type="button" class="btn-secondary" (click)="startDataUpdate()"
+                [disabled]="currentTask && currentTask.status === 'running'">
+          📥 Update Data Only
+        </button>
+        <button type="button" class="btn-secondary" (click)="startTraining(false)"
+                [disabled]="!systemStatus?.has_data || (currentTask && currentTask.status === 'running')">
+          🧠 Train Model Only
+        </button>
+      </div>
+
+      <div class="button-group">
+        <button type="button" (click)="loadMetrics(true)" [disabled]="isLoadingMetrics">
+          {{ isLoadingMetrics ? 'Loading...' : '📊 Refresh Metrics' }}
+        </button>
+      </div>
+    </div>
+
+    <!-- Training Options -->
+    <div class="training-options" *ngIf="systemStatus?.has_data">
+      <h3>Training Options</h3>
+      <div class="training-ticker-selection">
+        <p *ngIf="trainingTickers.length === 0">
+          Training will use <strong>all {{ allCompanies.length }} companies</strong>.
+        </p>
+        <p *ngIf="trainingTickers.length > 0">
+          Training will use <strong>{{ trainingTickers.length }} selected companies</strong>.
+        </p>
+        <div class="training-actions">
+          <button type="button" class="btn-small" (click)="setTrainingTickers()"
+                  [disabled]="selectedIds.length === 0">
+            Use Selected ({{ selectedIds.length }}) for Training
+          </button>
+          <button type="button" class="btn-small" (click)="clearTrainingTickers()"
+                  *ngIf="trainingTickers.length > 0">
+            Use All Companies
+          </button>
+          <button type="button" class="btn-small btn-primary" (click)="startTraining(true)"
+                  *ngIf="trainingTickers.length > 0"
+                  [disabled]="currentTask && currentTask.status === 'running'">
+            Train on Selected
+          </button>
+        </div>
+      </div>
     </div>
 
     <div class="forecast-form">
@@ -88,13 +176,13 @@
         <input type="text" [(ngModel)]="levels" placeholder="80,95" />
       </label>
 
-      <button type="button" class="btn-primary" (click)="runForecast()" [disabled]="isForecasting || !summary || selectedIds.length === 0">
-        {{ isForecasting ? 'Forecasting...' : 'Generate Forecast' }}
+      <button type="button" class="btn-primary" (click)="runForecast()"
+              [disabled]="isForecasting || !systemStatus?.ready_for_predictions || selectedIds.length === 0">
+        {{ isForecasting ? 'Forecasting...' : '🔮 Generate Forecast' }}
       </button>
     </div>
   </section>
 
-  <p class="error" *ngIf="errorMessage">{{ errorMessage }}</p>
 
   <section class="panel summary" *ngIf="summary">
     <h2>Pipeline Summary</h2>

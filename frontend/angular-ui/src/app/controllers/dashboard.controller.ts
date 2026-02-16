@@ -1,7 +1,7 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnInit } from '@angular/core';
+import { Component, OnDestroy, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { forkJoin } from 'rxjs';
+import { forkJoin, interval, Subject, takeUntil } from 'rxjs';
 
 import { ForecastChartComponent } from '../components/forecast-chart.component';
 import { MetricsChartComponent } from '../components/metrics-chart.component';
@@ -11,6 +11,8 @@ import {
   HistoryRecord,
   PipelineSummary,
   SP500Company,
+  SystemStatus,
+  TaskInfo,
 } from '../models/forecast.models';
 import { ForecastApiService } from '../services/forecast-api.service';
 
@@ -21,7 +23,13 @@ import { ForecastApiService } from '../services/forecast-api.service';
   templateUrl: '../views/dashboard.view.html',
   styleUrls: ['../views/dashboard.view.scss'],
 })
-export class DashboardControllerComponent implements OnInit {
+export class DashboardControllerComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
+
+  // System status
+  systemStatus: SystemStatus | null = null;
+  currentTask: TaskInfo | null = null;
+
   // Company data
   allCompanies: SP500Company[] = [];
   allSectors: string[] = [];
@@ -32,6 +40,7 @@ export class DashboardControllerComponent implements OnInit {
 
   // Selection
   selectedIds: string[] = [];
+  trainingTickers: string[] = []; // Tickers selected for training
   availableModels: string[] = [];
   selectedModel = '';
 
@@ -46,6 +55,7 @@ export class DashboardControllerComponent implements OnInit {
   records: ForecastRecord[] = [];
   historyRecords: HistoryRecord[] = [];
   errorMessage = '';
+  successMessage = '';
   isLoading = false;
   isRunningPipeline = false;
   isForecasting = false;
@@ -54,7 +64,65 @@ export class DashboardControllerComponent implements OnInit {
   constructor(private readonly api: ForecastApiService) {}
 
   ngOnInit(): void {
+    this.loadSystemStatus();
     this.loadCompanies();
+    // Poll for status updates every 2 seconds
+    interval(2000)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(() => {
+        if (this.currentTask && this.currentTask.status === 'running') {
+          this.pollTaskStatus();
+        }
+      });
+  }
+
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
+  }
+
+  loadSystemStatus(): void {
+    this.api.getSystemStatus().subscribe({
+      next: (status) => {
+        this.systemStatus = status;
+        this.currentTask = status.current_task;
+        if (status.ready_for_predictions && status.data_stats) {
+          // Create a summary from data stats if we have a model ready
+          this.summary = {
+            rows: status.data_stats.rows,
+            unique_series: status.data_stats.companies,
+            start: status.data_stats.start_date,
+            end: status.data_stats.end_date,
+            trained_models: [],
+          };
+        }
+      },
+      error: () => {
+        // Silent fail - status is optional
+      },
+    });
+  }
+
+  pollTaskStatus(): void {
+    if (!this.currentTask) return;
+
+    this.api.getTaskStatus(this.currentTask.task_id).subscribe({
+      next: (response) => {
+        this.currentTask = response.task;
+        if (response.task.status === 'completed') {
+          this.successMessage = `Task completed: ${response.task.message}`;
+          this.loadCompanies(); // Refresh companies after data update
+          this.loadSystemStatus();
+          this.loadMetrics(true);
+        } else if (response.task.status === 'failed') {
+          this.errorMessage = `Task failed: ${response.task.error || response.task.message}`;
+        }
+      },
+      error: () => {
+        // Task may have been cleared
+        this.currentTask = null;
+      },
+    });
   }
 
   loadCompanies(): void {
@@ -123,13 +191,20 @@ export class DashboardControllerComponent implements OnInit {
     this.selectedIds = [];
   }
 
-  runPipeline(): void {
+  runPipeline(download = true): void {
+    if (this.currentTask && this.currentTask.status === 'running') {
+      this.errorMessage = 'A task is already running. Please wait for it to complete.';
+      return;
+    }
     this.isRunningPipeline = true;
     this.errorMessage = '';
-    this.api.runPipeline(false).subscribe({
-      next: (summary) => {
-        this.summary = summary;
-        this.loadMetrics(false);
+    this.successMessage = '';
+
+    // Use background task API for non-blocking operation
+    this.api.startFullPipeline(download).subscribe({
+      next: (response) => {
+        this.currentTask = response.task;
+        this.successMessage = response.message;
         this.isRunningPipeline = false;
       },
       error: (err) => {
@@ -137,6 +212,59 @@ export class DashboardControllerComponent implements OnInit {
         this.isRunningPipeline = false;
       },
     });
+  }
+
+  startDataUpdate(): void {
+    if (this.currentTask && this.currentTask.status === 'running') {
+      this.errorMessage = 'A task is already running. Please wait for it to complete.';
+      return;
+    }
+    this.errorMessage = '';
+    this.successMessage = '';
+
+    this.api.startDataUpdate().subscribe({
+      next: (response) => {
+        this.currentTask = response.task;
+        this.successMessage = response.message;
+      },
+      error: (err) => {
+        this.errorMessage = this.buildError(err);
+      },
+    });
+  }
+
+  startTraining(useSelectedTickers = false): void {
+    if (this.currentTask && this.currentTask.status === 'running') {
+      this.errorMessage = 'A task is already running. Please wait for it to complete.';
+      return;
+    }
+    this.errorMessage = '';
+    this.successMessage = '';
+
+    const tickers = useSelectedTickers && this.trainingTickers.length > 0
+      ? this.trainingTickers
+      : undefined;
+
+    this.api.startModelTraining(tickers).subscribe({
+      next: (response) => {
+        this.currentTask = response.task;
+        this.successMessage = response.message;
+      },
+      error: (err) => {
+        this.errorMessage = this.buildError(err);
+      },
+    });
+  }
+
+  setTrainingTickers(): void {
+    // Copy currently selected companies to training tickers
+    this.trainingTickers = [...this.selectedIds];
+    this.successMessage = `Training will use ${this.trainingTickers.length} selected companies.`;
+  }
+
+  clearTrainingTickers(): void {
+    this.trainingTickers = [];
+    this.successMessage = 'Training will use all available companies.';
   }
 
   loadMetrics(runIfMissing = true): void {

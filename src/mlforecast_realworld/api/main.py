@@ -12,6 +12,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 
 from mlforecast_realworld.api.service import ForecastService
 from mlforecast_realworld.config import get_settings
@@ -20,10 +21,25 @@ from mlforecast_realworld.schemas.records import ForecastRequest, PipelineSummar
 
 logger = get_logger(__name__)
 
+
+class TaskStartRequest(BaseModel):
+    """Request body for starting a background task."""
+    download: bool = False
+    tickers: list[str] | None = Field(default=None, description="Optional list of tickers to use")
+
+
+class TrainingRequest(BaseModel):
+    """Request body for selective model training."""
+    tickers: list[str] | None = Field(default=None, description="Tickers to train on (all if empty)")
+    download: bool = Field(default=False, description="Whether to download fresh data first")
+
+logger = get_logger(__name__)
+
 # API Tags for OpenAPI documentation
 TAGS_METADATA = [
     {"name": "health", "description": "Health check endpoints"},
     {"name": "pipeline", "description": "ML pipeline operations (train, evaluate)"},
+    {"name": "tasks", "description": "Background task management"},
     {"name": "forecast", "description": "Generate predictions"},
 ]
 
@@ -164,6 +180,79 @@ def create_app() -> FastAPI:
         except ValueError as exc:
             logger.warning("History error: %s", exc)
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # ==================== Background Task Endpoints ====================
+
+    @app.get("/status", tags=["health"])
+    def system_status() -> dict[str, Any]:
+        """Get comprehensive system status including data/model availability and task status."""
+        return service.get_status()
+
+    @app.post("/tasks/data-update", tags=["tasks"])
+    def start_data_update(request: TaskStartRequest | None = None) -> dict[str, Any]:
+        """
+        Start background data download/update.
+
+        This runs asynchronously and doesn't block the API.
+        Use /tasks/{task_id} to check progress.
+        """
+        try:
+            tickers = request.tickers if request else None
+            task = service.start_data_update(tickers=tickers)
+            logger.info("Started data update task: %s", task.task_id)
+            return {"task": task.to_dict(), "message": "Data update started in background"}
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/tasks/train", tags=["tasks"])
+    def start_model_training(request: TrainingRequest | None = None) -> dict[str, Any]:
+        """
+        Start background model training.
+
+        Optionally specify which tickers to train on.
+        Training uses existing data unless download=true.
+        """
+        try:
+            tickers = request.tickers if request else None
+            download = request.download if request else False
+            task = service.start_model_training(tickers=tickers, download=download)
+            logger.info("Started training task: %s (tickers=%s)", task.task_id, tickers)
+            return {"task": task.to_dict(), "message": "Model training started in background"}
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/tasks/full-pipeline", tags=["tasks"])
+    def start_full_pipeline(request: TaskStartRequest | None = None) -> dict[str, Any]:
+        """
+        Start full pipeline (download + train) in background.
+
+        This is the non-blocking version of /pipeline/run.
+        """
+        try:
+            download = request.download if request else True
+            tickers = request.tickers if request else None
+            task = service.start_full_pipeline(download=download, tickers=tickers)
+            logger.info("Started full pipeline task: %s", task.task_id)
+            return {"task": task.to_dict(), "message": "Full pipeline started in background"}
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.get("/tasks/{task_id}", tags=["tasks"])
+    def get_task_status(task_id: str) -> dict[str, Any]:
+        """Get status of a background task."""
+        task = service.get_task_status(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+        return {"task": task.to_dict()}
+
+    @app.get("/tasks", tags=["tasks"])
+    def list_tasks() -> dict[str, Any]:
+        """List all background tasks (recent history)."""
+        tasks = service.get_all_tasks()
+        return {
+            "tasks": [t.to_dict() for t in tasks],
+            "count": len(tasks),
+        }
 
     return app
 

@@ -7,10 +7,18 @@ and business logic.
 """
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import pandas as pd
 
+from mlforecast_realworld.api.background_tasks import (
+    BackgroundTaskManager,
+    TaskInfo,
+    TaskStatus,
+    TaskType,
+    get_task_manager,
+)
 from mlforecast_realworld.config import get_settings
 from mlforecast_realworld.data.sp500 import (
     SP500_TICKERS_STOOQ,
@@ -25,6 +33,8 @@ from mlforecast_realworld.schemas.records import (
     forecast_records_from_frame,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class ForecastService:
     """Service layer for forecast operations."""
@@ -33,6 +43,170 @@ class ForecastService:
         """Initialize the service with an optional pipeline instance."""
         self.pipeline = pipeline or ForecastPipeline()
         self._settings = get_settings()
+        self._task_manager = get_task_manager()
+        self._try_load_existing_model()
+
+    def _try_load_existing_model(self) -> None:
+        """Try to load existing model and data at startup."""
+        try:
+            # Load existing training data
+            if self.pipeline.processed_data_path.exists():
+                self.pipeline.training_frame = pd.read_parquet(
+                    self.pipeline.processed_data_path
+                )
+                logger.info(
+                    "Loaded existing training data: %d rows",
+                    len(self.pipeline.training_frame),
+                )
+
+            # Load existing model
+            if self.pipeline.model_path.exists():
+                self.pipeline.load_model()
+                logger.info("Loaded existing model from %s", self.pipeline.model_path)
+        except Exception as e:
+            logger.warning("Could not load existing artifacts: %s", e)
+
+    def get_status(self) -> dict[str, Any]:
+        """Get current system status including task info."""
+        current_task = self._task_manager.get_current_task()
+        has_data = self.pipeline.training_frame is not None
+        has_model = self.pipeline.forecaster is not None
+
+        data_stats = {}
+        if has_data and self.pipeline.training_frame is not None:
+            frame = self.pipeline.training_frame
+            data_stats = {
+                "rows": int(len(frame)),
+                "companies": int(frame["unique_id"].nunique()),
+                "start_date": pd.Timestamp(frame["ds"].min()).isoformat(),
+                "end_date": pd.Timestamp(frame["ds"].max()).isoformat(),
+            }
+
+        return {
+            "has_data": has_data,
+            "has_model": has_model,
+            "is_busy": self._task_manager.is_busy(),
+            "current_task": current_task.to_dict() if current_task else None,
+            "data_stats": data_stats,
+            "ready_for_predictions": has_data and has_model,
+        }
+
+    def start_data_update(self, tickers: list[str] | None = None) -> TaskInfo:
+        """Start data update in background."""
+        if self._task_manager.is_busy():
+            raise ValueError("Another task is already running")
+
+        task = self._task_manager.create_task(TaskType.DATA_UPDATE, tickers)
+
+        def _update_data():
+            self._task_manager.update_task(
+                task.task_id, progress=10.0, message="Downloading data..."
+            )
+            self.pipeline.prepare_training_data(download=True)
+            frame = self.pipeline.training_frame
+            return {
+                "rows": int(len(frame)) if frame is not None else 0,
+                "companies": int(frame["unique_id"].nunique()) if frame is not None else 0,
+            }
+
+        self._task_manager.run_in_background(task.task_id, _update_data)
+        return task
+
+    def start_model_training(
+        self, tickers: list[str] | None = None, download: bool = False
+    ) -> TaskInfo:
+        """Start model training in background."""
+        if self._task_manager.is_busy():
+            raise ValueError("Another task is already running")
+
+        task = self._task_manager.create_task(TaskType.MODEL_TRAINING, tickers)
+
+        def _train_model():
+            self._task_manager.update_task(
+                task.task_id, progress=10.0, message="Preparing training data..."
+            )
+
+            # Optionally download fresh data
+            if download:
+                self._task_manager.update_task(
+                    task.task_id, progress=20.0, message="Downloading fresh data..."
+                )
+                self.pipeline.prepare_training_data(download=True)
+            elif self.pipeline.training_frame is None:
+                # Load existing data if available
+                if self.pipeline.processed_data_path.exists():
+                    self.pipeline.training_frame = pd.read_parquet(
+                        self.pipeline.processed_data_path
+                    )
+                else:
+                    raise ValueError("No training data available. Download data first.")
+
+            frame = self.pipeline.training_frame
+            if frame is None:
+                raise ValueError("No training data available")
+
+            # Filter to requested tickers if specified
+            if tickers:
+                frame = frame[frame["unique_id"].isin(tickers)].copy()
+                if len(frame) == 0:
+                    raise ValueError(f"No data found for requested tickers: {tickers}")
+
+            self._task_manager.update_task(
+                task.task_id, progress=40.0, message="Training models..."
+            )
+            self.pipeline.fit(frame)
+
+            self._task_manager.update_task(
+                task.task_id, progress=70.0, message="Running cross-validation..."
+            )
+            _, cv_summary = self.pipeline.cross_validate(frame)
+
+            self._task_manager.update_task(
+                task.task_id, progress=90.0, message="Saving model..."
+            )
+            self.pipeline.save_model()
+
+            return {
+                "rows": int(len(frame)),
+                "companies": int(frame["unique_id"].nunique()),
+                "best_model": str(cv_summary.iloc[0]["model"]) if len(cv_summary) > 0 else None,
+            }
+
+        self._task_manager.run_in_background(task.task_id, _train_model)
+        return task
+
+    def start_full_pipeline(
+        self, download: bool = True, tickers: list[str] | None = None
+    ) -> TaskInfo:
+        """Start full pipeline (download + train) in background."""
+        if self._task_manager.is_busy():
+            raise ValueError("Another task is already running")
+
+        task = self._task_manager.create_task(TaskType.FULL_PIPELINE, tickers)
+
+        def _run_full():
+            self._task_manager.update_task(
+                task.task_id, progress=5.0, message="Starting pipeline..."
+            )
+
+            if download:
+                self._task_manager.update_task(
+                    task.task_id, progress=10.0, message="Downloading data..."
+                )
+
+            result = self.pipeline.run_full_pipeline(download=download)
+            return result.get("summary", {})
+
+        self._task_manager.run_in_background(task.task_id, _run_full)
+        return task
+
+    def get_task_status(self, task_id: str) -> TaskInfo | None:
+        """Get status of a background task."""
+        return self._task_manager.get_task(task_id)
+
+    def get_all_tasks(self) -> list[TaskInfo]:
+        """Get all tasks."""
+        return self._task_manager.get_all_tasks()
 
     def get_available_series(self) -> list[str]:
         """Get list of series IDs that have training data available."""

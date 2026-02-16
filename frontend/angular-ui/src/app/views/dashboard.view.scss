@@ -352,3 +352,141 @@ button:not(:disabled):hover {
   padding: 2rem;
   color: rgba(20, 35, 59, 0.6);
 }
+
+/* System Status Panel */
+.status-panel {
+  background: linear-gradient(135deg, rgba(255,255,255,0.9), rgba(240,248,255,0.9));
+}
+
+.status-grid {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  color: rgba(20, 35, 59, 0.6);
+}
+
+.status-item.ready {
+  color: #2e7d32;
+}
+
+.status-icon {
+  font-size: 1.1rem;
+}
+
+.data-stats {
+  color: rgba(20, 35, 59, 0.6);
+}
+
+/* Task Progress Panel */
+.task-panel {
+  background: linear-gradient(135deg, rgba(54, 162, 235, 0.1), rgba(54, 162, 235, 0.05));
+  border-color: rgba(54, 162, 235, 0.3);
+}
+
+.task-panel h3 {
+  margin: 0 0 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(54, 162, 235, 0.3);
+  border-top-color: rgb(54, 162, 235);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.progress-bar {
+  height: 8px;
+  background: rgba(54, 162, 235, 0.2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: rgb(54, 162, 235);
+  border-radius: 4px;
+  transition: width 300ms ease;
+}
+
+.task-message {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+  color: rgba(20, 35, 59, 0.7);
+}
+
+/* Success message */
+.success {
+  margin: 0;
+  background: rgba(46, 125, 50, 0.1);
+  border: 1px solid rgba(46, 125, 50, 0.3);
+  color: #1b5e20;
+  padding: 0.6rem 0.8rem;
+  border-radius: 10px;
+}
+
+/* Pipeline Controls */
+.actions h2 {
+  margin: 0 0 1rem;
+}
+
+.button-group {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.action-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  margin-bottom: 1rem;
+}
+
+/* Training Options */
+.training-options {
+  background: rgba(255, 193, 7, 0.08);
+  border: 1px solid rgba(255, 193, 7, 0.25);
+  border-radius: 10px;
+  padding: 0.8rem;
+  margin-bottom: 1rem;
+}
+
+.training-options h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.training-ticker-selection p {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+}
+
+.training-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.btn-small {
+  font-size: 0.75rem;
+  padding: 0.35rem 0.6rem;
+}
+

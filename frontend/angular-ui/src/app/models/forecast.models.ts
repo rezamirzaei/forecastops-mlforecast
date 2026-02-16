@@ -16,6 +16,7 @@ export interface SP500Company {
   symbol: string;
   name: string;
   sector: string;
+  has_data?: boolean;
 }
 
 export interface CompaniesResponse {
@@ -64,3 +65,59 @@ export interface MetricsResponse {
   best_model: string | null;
   count: number;
 }
+
+// =============== Background Task Types ===============
+
+export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type TaskType = 'data_update' | 'model_training' | 'full_pipeline';
+
+export interface TaskInfo {
+  task_id: string;
+  task_type: TaskType;
+  status: TaskStatus;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  progress: number;
+  message: string;
+  result: Record<string, unknown>;
+  error: string | null;
+  tickers_requested: string[];
+}
+
+export interface TaskResponse {
+  task: TaskInfo;
+  message: string;
+}
+
+export interface TasksListResponse {
+  tasks: TaskInfo[];
+  count: number;
+}
+
+export interface DataStats {
+  rows: number;
+  companies: number;
+  start_date: string;
+  end_date: string;
+}
+
+export interface SystemStatus {
+  has_data: boolean;
+  has_model: boolean;
+  is_busy: boolean;
+  current_task: TaskInfo | null;
+  data_stats: DataStats | null;
+  ready_for_predictions: boolean;
+}
+
+export interface TaskStartRequest {
+  download: boolean;
+  tickers: string[] | null;
+}
+
+export interface TrainingRequest {
+  tickers: string[] | null;
+  download: boolean;
+}
+

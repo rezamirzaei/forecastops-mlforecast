@@ -10,6 +10,12 @@ import {
   MetricsResponse,
   PipelineSummary,
   SeriesResponse,
+  SystemStatus,
+  TaskInfo,
+  TaskResponse,
+  TasksListResponse,
+  TaskStartRequest,
+  TrainingRequest,
 } from '../models/forecast.models';
 
 @Injectable({ providedIn: 'root' })
@@ -50,5 +56,34 @@ export class ForecastApiService {
 
   health(): Observable<{ status: string }> {
     return this.http.get<{ status: string }>(`${this.baseUrl}/health`);
+  }
+
+  // =============== Background Task API ===============
+
+  getSystemStatus(): Observable<SystemStatus> {
+    return this.http.get<SystemStatus>(`${this.baseUrl}/status`);
+  }
+
+  startDataUpdate(tickers?: string[]): Observable<TaskResponse> {
+    const body: TaskStartRequest = { download: true, tickers: tickers || null };
+    return this.http.post<TaskResponse>(`${this.baseUrl}/tasks/data-update`, body);
+  }
+
+  startModelTraining(tickers?: string[], download = false): Observable<TaskResponse> {
+    const body: TrainingRequest = { tickers: tickers || null, download };
+    return this.http.post<TaskResponse>(`${this.baseUrl}/tasks/train`, body);
+  }
+
+  startFullPipeline(download = true, tickers?: string[]): Observable<TaskResponse> {
+    const body: TaskStartRequest = { download, tickers: tickers || null };
+    return this.http.post<TaskResponse>(`${this.baseUrl}/tasks/full-pipeline`, body);
+  }
+
+  getTaskStatus(taskId: string): Observable<{ task: TaskInfo }> {
+    return this.http.get<{ task: TaskInfo }>(`${this.baseUrl}/tasks/${taskId}`);
+  }
+
+  getAllTasks(): Observable<TasksListResponse> {
+    return this.http.get<TasksListResponse>(`${this.baseUrl}/tasks`);
   }
 }
