@@ -11,7 +11,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field, HttpUrl, PositiveInt, field_validator
+from pydantic import BaseModel, Field, PositiveInt, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from mlforecast_realworld.data.sp500 import SP500_TICKERS_STOOQ
@@ -26,7 +26,7 @@ class DataSourceSettings(BaseModel):
     start_date: date = date(2019, 1, 1)
     end_date: date | None = None
     interval: Literal["d", "w", "m"] = "d"
-    base_url: HttpUrl = "https://stooq.com/q/d/l/"
+    base_url: str = "https://stooq.com/q/d/l/"
 
     @field_validator("tickers", mode="before")
     @classmethod

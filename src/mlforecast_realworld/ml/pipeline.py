@@ -275,6 +275,9 @@ class ForecastPipeline:
                 ),
             )
             try:
+                levels: list[int | float] | None = (
+                    list(self.settings.forecast.levels) if intervals is not None else None
+                )
                 cv_df = cv_forecaster.cross_validation(
                     model_frame,
                     n_windows=self.settings.forecast.cv_windows,
@@ -285,7 +288,7 @@ class ForecastPipeline:
                     refit=1,
                     fitted=True,
                     prediction_intervals=intervals,
-                    level=self.settings.forecast.levels if intervals is not None else None,
+                    level=levels,
                     before_predict_callback=before_predict_cleanup,
                     after_predict_callback=after_predict_clip,
                     as_numpy=True,
@@ -346,6 +349,11 @@ class ForecastPipeline:
                     "Model not trained. Run /pipeline/run before requesting forecasts."
                 )
 
+        # At this point forecaster must be loaded
+        if self.forecaster is None:
+            raise ValueError("Failed to load forecaster model")
+        forecaster = self.forecaster  # Local var for type narrowing
+
         frame = self._require_training_frame()
         h = horizon or self.settings.forecast.horizon
         all_ids = sorted(frame["unique_id"].unique().tolist())
@@ -358,11 +366,11 @@ class ForecastPipeline:
             horizon=h,
             freq=self.settings.forecast.freq,
         )
-        missing = self.forecaster.get_missing_future(h=h, X_df=future_x)
+        missing = forecaster.get_missing_future(h=h, X_df=future_x)
         if not missing.empty:
             raise ValueError(f"missing future exogenous rows: {len(missing)}")
 
-        _ = self.forecaster.make_future_dataframe(h=h)
+        _ = forecaster.make_future_dataframe(h=h)
         with warnings.catch_warnings():
             warnings.filterwarnings(
                 "ignore",
@@ -372,10 +380,12 @@ class ForecastPipeline:
                 ),
             )
             if self.intervals_enabled:
-                predict_levels = levels or self.settings.forecast.levels
+                predict_levels: list[int | float] | None = list(
+                    levels or self.settings.forecast.levels
+                )
             else:
                 predict_levels = None
-            predictions = self.forecaster.predict(
+            predictions = forecaster.predict(
                 h=h,
                 X_df=future_x,
                 level=predict_levels,
@@ -390,7 +400,7 @@ class ForecastPipeline:
 
         # Add ensemble mean AFTER price reconstruction
         predictions = self._add_ensemble_column(
-            predictions, model_names=list(self.forecaster.models.keys())
+            predictions, model_names=list(forecaster.models.keys())
         )
 
         if ids:

@@ -267,7 +267,7 @@ class ForecastService:
         unique_tickers = list(dict.fromkeys(tickers))
         return [ticker.upper() for ticker in unique_tickers]
 
-    def get_all_companies(self) -> list[dict[str, str]]:
+    def get_all_companies(self) -> list[dict[str, Any]]:
         """Get S&P 500 companies that have training data available."""
         available_series = set(self.get_available_series())
 
@@ -288,7 +288,7 @@ class ForecastService:
             })
         return companies
 
-    def get_all_sp500_companies(self) -> list[dict[str, str]]:
+    def get_all_sp500_companies(self) -> list[dict[str, Any]]:
         """Get ALL S&P 500 companies (for reference, may not have data)."""
         available_series = set(self.get_available_series())
 

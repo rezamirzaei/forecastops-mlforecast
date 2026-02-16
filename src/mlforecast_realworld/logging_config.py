@@ -29,7 +29,7 @@ def setup_logging(
         level: Log level (DEBUG, INFO, WARNING, ERROR). Defaults to INFO.
         environment: Environment name to determine format (dev=readable, prod=JSON).
     """
-    log_level = level or os.getenv("LOG_LEVEL", "INFO")
+    log_level = level or os.getenv("LOG_LEVEL", "INFO") or "INFO"
     log_format = LOG_FORMAT_PROD if environment == "prod" else LOG_FORMAT_DEV
 
     logging.basicConfig(

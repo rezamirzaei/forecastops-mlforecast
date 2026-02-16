@@ -144,7 +144,8 @@ class TargetTransformerFactory:
         transformer_class = cls._transformers.get(target_type)
         if transformer_class is None:
             raise ValueError(f"Unknown target type: {target_type}")
-        return transformer_class()
+        instance: TargetTransformer = transformer_class()
+        return instance
 
     @classmethod
     def register(cls, target_type: TargetType, transformer_class: type) -> None:

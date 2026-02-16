@@ -492,14 +492,14 @@ def build_mlforecast(settings: ForecastSettings) -> MLForecast:
         ],
     }
 
-    date_features = ["dayofweek", "month", "quarter", week_of_month]
-    target_transforms = [Differences([1]), LocalStandardScaler()]
+    date_features: list[Any] = ["dayofweek", "month", "quarter", week_of_month]
+    target_transforms: list[Any] = [Differences([1]), LocalStandardScaler()]
 
     return MLForecast(
         models=default_models(settings.random_state),
         freq=settings.freq,
         lags=settings.lags,
-        lag_transforms=lag_transforms,
+        lag_transforms=lag_transforms,  # type: ignore[arg-type]
         date_features=date_features,
         num_threads=settings.num_threads,
         target_transforms=target_transforms,
