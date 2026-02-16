@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pandas as pd
@@ -21,6 +22,11 @@ class DummyPipeline:
             }
         )
         self.forecaster = type("F", (), {"models": {"lin_reg": object()}})()
+        # Mock path objects that return False for exists()
+        self.processed_data_path = MagicMock(spec=Path)
+        self.processed_data_path.exists.return_value = False
+        self.model_path = MagicMock(spec=Path)
+        self.model_path.exists.return_value = False
 
     def run_full_pipeline(self, download: bool = True):  # noqa: ARG002
         return {"summary": {"rows": 2}}
