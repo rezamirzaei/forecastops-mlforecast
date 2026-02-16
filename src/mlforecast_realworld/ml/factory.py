@@ -41,7 +41,7 @@ from sklearn.ensemble import (
     HistGradientBoostingRegressor,
     RandomForestRegressor,
 )
-from sklearn.linear_model import ElasticNet, Ridge
+from sklearn.linear_model import ElasticNet, Ridge, SGDRegressor
 from sklearn.neural_network import MLPRegressor
 from xgboost import XGBRegressor
 
@@ -112,6 +112,31 @@ def create_elastic_net(random_state: int) -> ElasticNet:
     )
 
 
+def create_sgd_regressor(random_state: int) -> SGDRegressor:
+    """
+    Create SGD Regressor using Stochastic Gradient Descent.
+
+    SGD is faster to converge on large datasets and supports:
+    - Online learning (can be updated incrementally)
+    - Various loss functions and penalties
+    - Efficient for high-dimensional data
+    """
+    return SGDRegressor(
+        loss="huber",  # Robust to outliers (common in financial data)
+        penalty="elasticnet",  # Combines L1 and L2 regularization
+        alpha=0.0001,
+        l1_ratio=0.15,
+        max_iter=1000,
+        tol=1e-4,
+        learning_rate="adaptive",  # Adapts learning rate during training
+        eta0=0.01,  # Initial learning rate
+        early_stopping=True,
+        validation_fraction=0.1,
+        n_iter_no_change=10,
+        random_state=random_state,
+    )
+
+
 def create_random_forest(random_state: int) -> RandomForestRegressor:
     """Create Random Forest regressor."""
     return RandomForestRegressor(
@@ -137,13 +162,14 @@ def create_extra_trees(random_state: int) -> ExtraTreesRegressor:
 
 
 def create_gradient_boosting(random_state: int) -> GradientBoostingRegressor:
-    """Create Gradient Boosting regressor (sklearn)."""
+    """Create Gradient Boosting regressor with stochastic settings for faster training."""
     return GradientBoostingRegressor(
         n_estimators=DEFAULT_N_ESTIMATORS_GB,
         learning_rate=DEFAULT_LEARNING_RATE,
         max_depth=DEFAULT_MAX_DEPTH_BOOST,
         min_samples_leaf=DEFAULT_MIN_SAMPLES_LEAF,
-        subsample=0.8,
+        subsample=0.7,  # Stochastic gradient boosting - use subset of samples
+        max_features=0.8,  # Stochastic - use subset of features per tree
         random_state=random_state,
     )
 
@@ -161,38 +187,42 @@ def create_hist_gradient_boosting(random_state: int) -> HistGradientBoostingRegr
 
 
 def create_lightgbm(random_state: int) -> LGBMRegressor:
-    """Create LightGBM regressor."""
+    """Create LightGBM regressor with stochastic settings for faster convergence."""
     return LGBMRegressor(
         n_estimators=DEFAULT_N_ESTIMATORS_LGBM,
         learning_rate=DEFAULT_LEARNING_RATE,
         max_depth=DEFAULT_MAX_DEPTH_BOOST,
         num_leaves=31,
         min_child_samples=20,
-        subsample=0.8,
-        colsample_bytree=0.8,
+        subsample=0.7,  # Stochastic - row sampling
+        subsample_freq=1,  # Apply subsampling every iteration
+        colsample_bytree=0.7,  # Stochastic - column sampling
         reg_alpha=0.1,
         reg_lambda=0.1,
         random_state=random_state,
         n_jobs=-1,
         verbose=-1,
         force_col_wise=True,
+        boosting_type="gbdt",  # Can also use "dart" for dropout
     )
 
 
 def create_xgboost(random_state: int) -> XGBRegressor:
-    """Create XGBoost regressor."""
+    """Create XGBoost regressor with stochastic settings for faster convergence."""
     return XGBRegressor(
         n_estimators=DEFAULT_N_ESTIMATORS_XGB,
         learning_rate=DEFAULT_LEARNING_RATE,
         max_depth=DEFAULT_MAX_DEPTH_BOOST,
         min_child_weight=5,
-        subsample=0.8,
-        colsample_bytree=0.8,
+        subsample=0.7,  # Stochastic - row sampling per tree
+        colsample_bytree=0.7,  # Stochastic - column sampling per tree
+        colsample_bylevel=0.8,  # Column sampling per level
         reg_alpha=0.1,
         reg_lambda=0.1,
         random_state=random_state,
         n_jobs=-1,
         verbosity=0,
+        tree_method="hist",  # Faster histogram-based algorithm
     )
 
 
@@ -203,15 +233,17 @@ def create_mlp(random_state: int) -> MLPRegressor:
     Architecture designed for financial time series:
     - Multiple hidden layers for non-linear pattern capture
     - Regularization to prevent overfitting
-    - Adam optimizer with adaptive learning rate
+    - SGD optimizer for faster convergence on large datasets
     """
     return MLPRegressor(
         hidden_layer_sizes=(128, 64, 32),
         activation="relu",
-        solver="adam",
+        solver="sgd",  # Stochastic Gradient Descent for faster convergence
         alpha=0.01,  # L2 regularization
         learning_rate="adaptive",
         learning_rate_init=DEFAULT_LEARNING_RATE_NN,
+        momentum=0.9,  # SGD momentum for faster convergence
+        nesterovs_momentum=True,  # Nesterov's accelerated gradient
         max_iter=500,
         early_stopping=True,
         validation_fraction=0.1,
@@ -244,6 +276,12 @@ class ModelRegistry:
             complexity=ModelComplexity.SIMPLE,
             factory=create_elastic_net,
             description="ElasticNet with L1+L2 regularization",
+        ),
+        "sgd": ModelConfig(
+            name="sgd",
+            complexity=ModelComplexity.SIMPLE,
+            factory=create_sgd_regressor,
+            description="SGD Regressor - fast convergence with stochastic gradient descent",
         ),
         "rf": ModelConfig(
             name="rf",

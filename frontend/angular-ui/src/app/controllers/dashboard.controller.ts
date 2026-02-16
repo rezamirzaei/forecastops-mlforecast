@@ -282,16 +282,13 @@ export class DashboardControllerComponent implements OnInit, OnDestroy {
   }
 
   runForecast(): void {
-    if (!this.summary) {
-      this.errorMessage = 'Run the pipeline first to train and persist models.';
-      return;
-    }
     if (this.selectedIds.length === 0) {
       this.errorMessage = 'Please select at least one company.';
       return;
     }
     this.isForecasting = true;
     this.errorMessage = '';
+    this.successMessage = '';
 
     forkJoin({
       forecast: this.api.forecast({

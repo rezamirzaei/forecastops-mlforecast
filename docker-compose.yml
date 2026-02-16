@@ -11,8 +11,9 @@ services:
       # Set INIT_DATA=true to download data and train model on first startup
       - INIT_DATA=${INIT_DATA:-false}
     volumes:
-      - mlforecast_data:/app/data
-      - mlforecast_artifacts:/app/artifacts
+      # Map local directories to use your existing artifacts
+      - ./data:/app/data
+      - ./artifacts:/app/artifacts
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -31,7 +32,3 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
-
-volumes:
-  mlforecast_data:
-  mlforecast_artifacts:

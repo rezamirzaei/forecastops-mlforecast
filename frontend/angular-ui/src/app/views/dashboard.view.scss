@@ -60,6 +60,12 @@
   align-items: end;
 }
 
+.forecast-hint {
+  font-size: 0.75rem;
+  color: rgba(20, 35, 59, 0.6);
+  grid-column: 1 / -1;
+}
+
 label {
   display: grid;
   gap: 0.4rem;

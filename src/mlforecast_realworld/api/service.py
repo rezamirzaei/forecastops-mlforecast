@@ -48,29 +48,68 @@ class ForecastService:
 
     def _try_load_existing_model(self) -> None:
         """Try to load existing model and data at startup."""
-        try:
-            # Load existing training data
-            if self.pipeline.processed_data_path.exists():
+        # Load existing training data
+        if self.pipeline.processed_data_path.exists():
+            try:
                 self.pipeline.training_frame = pd.read_parquet(
                     self.pipeline.processed_data_path
                 )
                 logger.info(
-                    "Loaded existing training data: %d rows",
+                    "Loaded existing training data: %d rows, %d companies",
                     len(self.pipeline.training_frame),
+                    self.pipeline.training_frame["unique_id"].nunique(),
                 )
+            except Exception as e:
+                logger.warning("Could not load training data: %s", e)
+        else:
+            logger.info("No existing training data found at %s", self.pipeline.processed_data_path)
 
-            # Load existing model
-            if self.pipeline.model_path.exists():
+        # Load existing model
+        if self.pipeline.model_path.exists():
+            try:
                 self.pipeline.load_model()
-                logger.info("Loaded existing model from %s", self.pipeline.model_path)
-        except Exception as e:
-            logger.warning("Could not load existing artifacts: %s", e)
+                model_names = list(self.pipeline.forecaster.models.keys()) if self.pipeline.forecaster else []
+                logger.info("Loaded existing model: %s", ", ".join(model_names))
+            except Exception as e:
+                logger.warning("Could not load model: %s", e)
+        else:
+            logger.info("No existing model found at %s", self.pipeline.model_path)
+
+        # Log final status
+        has_data = self.pipeline.training_frame is not None
+        has_model = self.pipeline.forecaster is not None
+        if has_data and has_model:
+            logger.info("✓ System ready for predictions")
+        else:
+            logger.info("System not ready: has_data=%s, has_model=%s", has_data, has_model)
 
     def get_status(self) -> dict[str, Any]:
         """Get current system status including task info."""
         current_task = self._task_manager.get_current_task()
+
+        # Check if data exists (in memory or on disk)
         has_data = self.pipeline.training_frame is not None
+        if not has_data and self.pipeline.processed_data_path.exists():
+            # Auto-load data from disk
+            try:
+                self.pipeline.training_frame = pd.read_parquet(
+                    self.pipeline.processed_data_path
+                )
+                has_data = True
+                logger.info("Auto-loaded training data for status check")
+            except Exception as e:
+                logger.warning("Failed to load training data: %s", e)
+
+        # Check if model exists (in memory or on disk)
         has_model = self.pipeline.forecaster is not None
+        if not has_model and self.pipeline.model_path.exists():
+            # Auto-load model from disk
+            try:
+                self.pipeline.load_model()
+                has_model = True
+                logger.info("Auto-loaded model for status check")
+            except Exception as e:
+                logger.warning("Failed to load model: %s", e)
 
         data_stats = {}
         if has_data and self.pipeline.training_frame is not None:
@@ -290,6 +329,23 @@ class ForecastService:
         )
 
     def get_forecast(self, request: ForecastRequest) -> list[dict[str, Any]]:
+        # Ensure model and data are loaded
+        if self.pipeline.forecaster is None:
+            if self.pipeline.model_path.exists():
+                self.pipeline.load_model()
+                logger.info("Loaded model for forecast request")
+            else:
+                raise ValueError("Model not available. Run pipeline first.")
+
+        if self.pipeline.training_frame is None:
+            if self.pipeline.processed_data_path.exists():
+                self.pipeline.training_frame = pd.read_parquet(
+                    self.pipeline.processed_data_path
+                )
+                logger.info("Loaded training data for forecast request")
+            else:
+                raise ValueError("Training data not available. Run pipeline first.")
+
         preds = self.pipeline.forecast(
             horizon=request.horizon,
             ids=request.ids,
@@ -322,10 +378,13 @@ class ForecastService:
             List of historical price records.
         """
         frame = self.pipeline.training_frame
+
+        # Auto-load data if not in memory
         if frame is None:
-            # Try to load from disk
             if self.pipeline.processed_data_path.exists():
-                frame = self.pipeline._require_training_frame()
+                frame = pd.read_parquet(self.pipeline.processed_data_path)
+                self.pipeline.training_frame = frame
+                logger.info("Loaded training data for history request")
             else:
                 raise ValueError("No training data available. Run pipeline first.")
 

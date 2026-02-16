@@ -177,9 +177,10 @@
       </label>
 
       <button type="button" class="btn-primary" (click)="runForecast()"
-              [disabled]="isForecasting || !systemStatus?.ready_for_predictions || selectedIds.length === 0">
+              [disabled]="isForecasting || selectedIds.length === 0">
         {{ isForecasting ? 'Forecasting...' : '🔮 Generate Forecast' }}
       </button>
+      <small class="forecast-hint" *ngIf="selectedIds.length === 0">Select at least one company</small>
     </div>
   </section>
 

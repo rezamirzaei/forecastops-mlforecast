@@ -176,14 +176,6 @@ describe('DashboardControllerComponent', () => {
   });
 
   it('runs forecast and stores records', () => {
-    component.systemStatus = {
-      has_data: true,
-      has_model: true,
-      is_busy: false,
-      current_task: null,
-      data_stats: { rows: 100, companies: 2, start_date: '2024-01-01', end_date: '2024-01-10' },
-      ready_for_predictions: true,
-    };
     component.selectedIds = ['AAPL.US'];
     component.runForecast();
     expect(component.records.length).toBe(1);
