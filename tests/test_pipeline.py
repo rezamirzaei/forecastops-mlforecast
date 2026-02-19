@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 from sklearn.linear_model import LinearRegression
@@ -156,6 +157,15 @@ def test_forecast_filters_ids_without_passing_subset_to_predict(
 
         @staticmethod
         def get_missing_future(h: int, X_df: pd.DataFrame) -> pd.DataFrame:
+            for col in [
+                "volatility_5d",
+                "volatility_20d",
+                "momentum_5d",
+                "momentum_20d",
+                "range_pct",
+                "volume_ma_ratio",
+            ]:
+                assert col in X_df.columns
             return pd.DataFrame(columns=X_df.columns)
 
         @staticmethod
@@ -181,6 +191,188 @@ def test_forecast_filters_ids_without_passing_subset_to_predict(
     assert preds["unique_id"].tolist() == ["AAPL.US"]
     assert "ensemble_mean" in preds.columns
     assert preds["ensemble_mean"].tolist() == [105.0]
+
+
+def test_attach_latest_technical_features_carries_last_observation(
+    tmp_path: Path,
+) -> None:
+    pipeline = ForecastPipeline(settings=_test_settings(tmp_path))
+    future_x = pd.DataFrame(
+        {
+            "unique_id": ["AAPL.US", "AAPL.US", "MSFT.US"],
+            "ds": pd.to_datetime(["2024-01-03", "2024-01-04", "2024-01-03"]),
+        }
+    )
+    training = pd.DataFrame(
+        {
+            "unique_id": ["AAPL.US", "AAPL.US", "MSFT.US"],
+            "ds": pd.to_datetime(["2024-01-01", "2024-01-02", "2024-01-02"]),
+            "volatility_5d": [0.1, 0.2, 0.3],
+            "volatility_20d": [0.4, 0.5, 0.6],
+            "momentum_5d": [0.01, 0.02, 0.03],
+            "momentum_20d": [0.04, 0.05, 0.06],
+            "range_pct": [0.07, 0.08, 0.09],
+            "volume_ma_ratio": [1.1, 1.2, 1.3],
+        }
+    )
+
+    out = pipeline._attach_latest_technical_features(future_x, training)
+    aapl_rows = out[out["unique_id"] == "AAPL.US"]
+    assert set(aapl_rows["volatility_5d"].tolist()) == {0.2}
+    assert set(aapl_rows["momentum_20d"].tolist()) == {0.05}
+    assert set(aapl_rows["volume_ma_ratio"].tolist()) == {1.2}
+
+
+def test_get_fitted_values_computes_runtime_from_model_weights(tmp_path: Path) -> None:
+    pipeline = ForecastPipeline(settings=_test_settings(tmp_path))
+    pipeline.training_frame = pd.DataFrame(
+        {
+            "unique_id": ["AAPL.US", "AAPL.US", "MSFT.US"],
+            "ds": pd.to_datetime(["2024-01-01", "2024-01-02", "2024-01-01"]),
+            "y": [0.1, 0.2, 0.3],
+        }
+    )
+
+    class StubModel:
+        @staticmethod
+        def predict(X):
+            return np.full(len(X), 0.42)
+
+    class StubForecaster:
+        models = {"stub_model": StubModel()}
+        models_ = {"stub_model": StubModel()}
+
+        @staticmethod
+        def forecast_fitted_values():
+            raise RuntimeError("not available")
+
+        @staticmethod
+        def preprocess(frame, static_features=None, keep_last_n=None, as_numpy=False):  # noqa: ARG002
+            out = frame.copy()
+            out["lag1"] = 1.0
+            return out
+
+    pipeline.forecaster = StubForecaster()  # type: ignore[assignment]
+    fitted = pipeline.get_fitted_values(ids=["AAPL.US"])
+    assert not fitted.empty
+    assert set(fitted["unique_id"].tolist()) == {"AAPL.US"}
+    assert "stub_model" in fitted.columns
+    assert set(fitted["stub_model"].tolist()) == {0.42}
+
+
+def test_forecast_injects_unseen_ids_history_into_forecaster(tmp_path: Path) -> None:
+    pipeline = ForecastPipeline(settings=_test_settings(tmp_path))
+    pipeline.training_frame = pd.DataFrame(
+        {
+            "unique_id": ["AAPL.US", "AAPL.US", "MSFT.US", "MSFT.US"],
+            "ds": pd.to_datetime(["2024-01-01", "2024-01-02", "2024-01-01", "2024-01-02"]),
+            "y": [0.1, 0.2, 0.3, 0.4],
+            "sector_code": [1, 1, 1, 1],
+            "asset_class_code": [1, 1, 1, 1],
+            "is_weekend": [0, 0, 0, 0],
+            "is_month_start": [1, 0, 1, 0],
+            "is_month_end": [0, 0, 0, 0],
+            "week_of_year": [1, 1, 1, 1],
+            "month_sin": [0.0, 0.0, 0.0, 0.0],
+            "month_cos": [1.0, 1.0, 1.0, 1.0],
+        }
+    )
+
+    class StubForecaster:
+        def __init__(self) -> None:
+            self.models = {"lin_reg": object()}
+            self.ts = type("TS", (), {"uids": pd.Index(["AAPL.US"], name="unique_id")})()
+            self.updated_ids: list[str] = []
+
+        @staticmethod
+        def get_missing_future(h: int, X_df: pd.DataFrame) -> pd.DataFrame:
+            return pd.DataFrame(columns=X_df.columns)
+
+        @staticmethod
+        def make_future_dataframe(h: int) -> pd.DataFrame:
+            return pd.DataFrame({"h": [h]})
+
+        def update(self, new_observations: pd.DataFrame) -> None:
+            self.updated_ids = sorted(new_observations["unique_id"].unique().tolist())
+            self.ts.uids = pd.Index(["AAPL.US", "MSFT.US"], name="unique_id")
+
+        @staticmethod
+        def predict(*_args, **_kwargs) -> pd.DataFrame:
+            return pd.DataFrame(
+                {
+                    "unique_id": ["AAPL.US", "MSFT.US"],
+                    "ds": [pd.Timestamp("2024-01-03"), pd.Timestamp("2024-01-03")],
+                    "lin_reg": [0.11, 0.33],
+                }
+            )
+
+    forecaster = StubForecaster()
+    pipeline.forecaster = forecaster  # type: ignore[assignment]
+
+    preds = pipeline.forecast(horizon=1, ids=["MSFT.US"], return_prices=False)
+    assert forecaster.updated_ids == ["MSFT.US"]
+    assert preds["unique_id"].tolist() == ["MSFT.US"]
+
+
+def test_forecast_injects_unseen_ids_via_preprocess_fallback(tmp_path: Path) -> None:
+    """When update() raises ValueError (target_transforms), we fall back to preprocess."""
+    pipeline = ForecastPipeline(settings=_test_settings(tmp_path))
+    pipeline.training_frame = pd.DataFrame(
+        {
+            "unique_id": ["AAPL.US", "AAPL.US", "MSFT.US", "MSFT.US"],
+            "ds": pd.to_datetime(["2024-01-01", "2024-01-02", "2024-01-01", "2024-01-02"]),
+            "y": [0.1, 0.2, 0.3, 0.4],
+            "sector_code": [1, 1, 1, 1],
+            "asset_class_code": [1, 1, 1, 1],
+            "is_weekend": [0, 0, 0, 0],
+            "is_month_start": [1, 0, 1, 0],
+            "is_month_end": [0, 0, 0, 0],
+            "week_of_year": [1, 1, 1, 1],
+            "month_sin": [0.0, 0.0, 0.0, 0.0],
+            "month_cos": [1.0, 1.0, 1.0, 1.0],
+        }
+    )
+
+    class StubForecaster:
+        def __init__(self) -> None:
+            self.models = {"lin_reg": object()}
+            self.ts = type("TS", (), {"uids": pd.Index(["AAPL.US"], name="unique_id")})()
+            self.preprocessed = False
+
+        @staticmethod
+        def get_missing_future(h: int, X_df: pd.DataFrame) -> pd.DataFrame:
+            return pd.DataFrame(columns=X_df.columns)
+
+        @staticmethod
+        def make_future_dataframe(h: int) -> pd.DataFrame:
+            return pd.DataFrame({"h": [h]})
+
+        def update(self, new_observations: pd.DataFrame) -> None:
+            raise ValueError("Can not update target_transforms with new series.")
+
+        def preprocess(self, frame, **_kwargs) -> pd.DataFrame:
+            self.preprocessed = True
+            self.ts.uids = pd.Index(
+                sorted(frame["unique_id"].unique()), name="unique_id"
+            )
+            return frame
+
+        @staticmethod
+        def predict(*_args, **_kwargs) -> pd.DataFrame:
+            return pd.DataFrame(
+                {
+                    "unique_id": ["AAPL.US", "MSFT.US"],
+                    "ds": [pd.Timestamp("2024-01-03"), pd.Timestamp("2024-01-03")],
+                    "lin_reg": [0.11, 0.33],
+                }
+            )
+
+    forecaster = StubForecaster()
+    pipeline.forecaster = forecaster  # type: ignore[assignment]
+
+    preds = pipeline.forecast(horizon=1, ids=["MSFT.US"], return_prices=False)
+    assert forecaster.preprocessed, "Should have fallen back to preprocess"
+    assert preds["unique_id"].tolist() == ["MSFT.US"]
 
 
 def test_load_model_retries_with_numpy_pickle_aliases(

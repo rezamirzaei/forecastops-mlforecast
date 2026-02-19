@@ -141,6 +141,7 @@
         </p>
         <p *ngIf="trainingTickers.length > 0">
           Training will use <strong>{{ trainingTickers.length }} selected companies</strong>.
+          <small class="info-hint">💡 The trained model can still generate forecasts for any company with available data.</small>
         </p>
         <div class="training-actions">
           <button type="button" class="btn-small" (click)="setTrainingTickers()"

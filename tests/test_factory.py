@@ -37,6 +37,17 @@ def test_build_mlforecast_returns_instance() -> None:
     assert forecast.freq == "B"
 
 
+def test_build_mlforecast_target_transforms_depend_on_target_type() -> None:
+    price_forecast = build_mlforecast(ForecastSettings(target_type="price"))
+    return_forecast = build_mlforecast(ForecastSettings(target_type="log_return"))
+
+    price_transforms = [type(t).__name__ for t in price_forecast.ts.target_transforms]
+    return_transforms = [type(t).__name__ for t in return_forecast.ts.target_transforms]
+
+    assert price_transforms == ["Differences", "LocalStandardScaler"]
+    assert return_transforms == ["LocalStandardScaler"]
+
+
 def test_model_registry_get_all_models() -> None:
     models = ModelRegistry.get_all_models(42)
     assert len(models) >= 9  # At least 9 models

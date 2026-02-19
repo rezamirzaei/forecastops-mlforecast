@@ -357,7 +357,7 @@ class ForecastService:
         if frame is None:
             raise ValueError("Training data not available. Run pipeline first.")
 
-        fitted = self.pipeline.get_fitted_values()
+        fitted = self.pipeline.get_fitted_values(ids=request.ids)
 
         model_cols = self._prediction_model_columns(fitted)
 
@@ -503,7 +503,7 @@ class ForecastService:
 
     @staticmethod
     def _prediction_model_columns(preds: pd.DataFrame) -> list[str]:
-        excluded = {"unique_id", "ds"}
+        excluded = {"unique_id", "ds", "y", "cutoff"}
         model_cols: list[str] = []
         for col in preds.columns:
             if col in excluded:

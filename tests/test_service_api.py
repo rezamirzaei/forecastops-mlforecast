@@ -66,7 +66,7 @@ class DummyPipeline:
         return pd.DataFrame([{"model": "lin_reg", "smape": 1.23, "wape": 1.11}])
 
 
-    def get_fitted_values(self):
+    def get_fitted_values(self, ids=None):  # noqa: ARG002
         return pd.DataFrame(
             {
                 "unique_id": ["AAPL.US", "AAPL.US"],
@@ -142,8 +142,8 @@ def test_forecast_service_backtest_reconstructs_return_target_prices() -> None:
         "DE", (), {"target_type": type("TT", (), {"value": "log_return"})()}
     )()
 
-    def returns_fitted_values():
-        return pd.DataFrame(
+    def returns_fitted_values(ids=None):  # noqa: ARG001
+        frame = pd.DataFrame(
             {
                 "unique_id": ["AAPL.US", "AAPL.US"],
                 "ds": [pd.Timestamp("2024-01-01"), pd.Timestamp("2024-01-02")],
@@ -151,6 +151,9 @@ def test_forecast_service_backtest_reconstructs_return_target_prices() -> None:
                 "lin_reg": [0.0, 0.0953101798],
             }
         )
+        if ids:
+            frame = frame[frame["unique_id"].isin(ids)]
+        return frame
 
     pipeline.get_fitted_values = returns_fitted_values
     service = ForecastService(pipeline=pipeline)

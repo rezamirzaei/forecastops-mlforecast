@@ -91,6 +91,14 @@ class ForecastPipeline:
         >>> fitted_values = pipeline.fit()
         >>> predictions = pipeline.predict(horizon=14, ids=["AAPL.US"])
     """
+    _TECHNICAL_FEATURE_COLUMNS = [
+        "volatility_5d",
+        "volatility_20d",
+        "momentum_5d",
+        "momentum_20d",
+        "range_pct",
+        "volume_ma_ratio",
+    ]
 
     def __init__(self, settings: AppSettings | None = None) -> None:
         self.settings = settings or get_settings()
@@ -250,7 +258,6 @@ class ForecastPipeline:
                     self.intervals_enabled = False
         self.forecaster = forecaster
         fitted = forecaster.forecast_fitted_values()
-        save_parquet(fitted, self.fitted_values_path)
         return fitted
 
     def cross_validate(
@@ -364,6 +371,7 @@ class ForecastPipeline:
         h = horizon or self.settings.forecast.horizon
         all_ids = sorted(frame["unique_id"].unique().tolist())
         requested_ids = ids or all_ids
+        self._ensure_ids_available_for_prediction(frame, requested_ids)
         last_timestamp = pd.Timestamp(frame["ds"].max())
 
         future_x = self.data_engineer.build_future_exogenous(
@@ -372,6 +380,7 @@ class ForecastPipeline:
             horizon=h,
             freq=self.settings.forecast.freq,
         )
+        future_x = self._attach_latest_technical_features(future_x, frame)
         missing = forecaster.get_missing_future(h=h, X_df=future_x)
         if not missing.empty:
             raise ValueError(f"missing future exogenous rows: {len(missing)}")
@@ -414,6 +423,69 @@ class ForecastPipeline:
                 drop=True
             )
         return predictions
+
+    def _ensure_ids_available_for_prediction(
+        self,
+        training_frame: pd.DataFrame,
+        requested_ids: list[str],
+    ) -> None:
+        """
+        Inject historical observations for unseen ids into forecaster state.
+
+        This enables transfer usage where a globally-trained model (learned on
+        one set of ids) can forecast additional ids as long as their history is
+        available at runtime.
+
+        When the forecaster uses ``target_transforms`` (e.g.
+        ``Differences``, ``LocalStandardScaler``) the built-in ``update()``
+        method raises ``ValueError`` for new series.  In that case we
+        re-preprocess the combined history (original training ids + new ids)
+        so that the internal ``TimeSeries`` state covers all needed series
+        while the already-trained model weights remain untouched.
+        """
+        if self.forecaster is None:
+            return
+
+        ts = getattr(self.forecaster, "ts", None)
+        seen_index = getattr(ts, "uids", None)
+        if seen_index is None:
+            return
+
+        seen_ids = {str(uid) for uid in seen_index.tolist()}
+        missing_ids = [uid for uid in requested_ids if uid not in seen_ids]
+        if not missing_ids:
+            return
+
+        missing_history = (
+            training_frame[training_frame["unique_id"].isin(missing_ids)]
+            .sort_values(["unique_id", "ds"])
+            .copy()
+        )
+        if missing_history.empty:
+            raise ValueError(
+                "Cannot forecast unseen ids without history: "
+                f"{', '.join(missing_ids[:10])}"
+            )
+
+        try:
+            self.forecaster.update(self._model_frame(missing_history))
+        except ValueError:
+            # target_transforms (Differences / LocalStandardScaler) do not
+            # support adding brand-new series via update().  Rebuild the
+            # internal TimeSeries state by re-preprocessing all needed ids
+            # (previously seen + newly requested).  Model weights are kept.
+            all_needed_ids = list(seen_ids | set(missing_ids))
+            combined = (
+                training_frame[training_frame["unique_id"].isin(all_needed_ids)]
+                .sort_values(["unique_id", "ds"])
+                .copy()
+            )
+            static_cols = ["sector_code", "asset_class_code"]
+            self.forecaster.preprocess(
+                self._model_frame(combined),
+                static_features=static_cols,
+                keep_last_n=self.settings.forecast.keep_last_n,
+            )
 
     def _reconstruct_prices(self, predictions: pd.DataFrame) -> pd.DataFrame:
         """Reconstruct prices from predicted returns."""
@@ -472,25 +544,84 @@ class ForecastPipeline:
             self.forecaster = MLForecast.load(self.model_path)
         return self.forecaster
 
-    def get_fitted_values(self) -> pd.DataFrame:
+    def get_fitted_values(self, ids: list[str] | None = None) -> pd.DataFrame:
         """Return fitted (in-sample) predictions.
 
         Tries ``forecast_fitted_values()`` first (available when the model was
-        fit in the current session).  Falls back to the persisted parquet file
-        produced during training.
+        fit in the current session). If unavailable, computes fitted values at
+        runtime from the persisted model and historical data. A legacy parquet
+        artifact is used only as a final fallback.
         """
+        frame = self._require_training_frame()
+        if ids:
+            frame = frame[frame["unique_id"].isin(ids)].copy()
+            if frame.empty:
+                return pd.DataFrame(columns=["unique_id", "ds"])
+
+        if self.forecaster is None and self.model_path.exists():
+            self.load_model()
+
         if self.forecaster is not None:
             try:
-                return self.forecaster.forecast_fitted_values()
+                fitted = self.forecaster.forecast_fitted_values()
+                if ids:
+                    fitted = fitted[fitted["unique_id"].isin(ids)].reset_index(drop=True)
+                return fitted
             except Exception:
                 pass
+
+            return self._compute_fitted_values_from_frame(frame)
+
         if self.fitted_values_path.exists():
-            return load_parquet(self.fitted_values_path)
+            fitted = load_parquet(self.fitted_values_path)
+            if ids:
+                fitted = fitted[fitted["unique_id"].isin(ids)].reset_index(drop=True)
+            return fitted
+
         raise ValueError(
-            "Fitted values not available. The model must be trained with "
-            "the current pipeline (run /tasks/full-pipeline) to generate "
-            "backtest predictions."
+            "Fitted values not available. Train or load a model first."
         )
+
+    def _compute_fitted_values_from_frame(self, frame: pd.DataFrame) -> pd.DataFrame:
+        """Compute one-step in-sample predictions from model weights at runtime."""
+        if self.forecaster is None:
+            raise ValueError("Model not available for fitted-value computation.")
+
+        model_frame = self._model_frame(frame)
+        static_cols = [c for c in ["sector_code", "asset_class_code"] if c in model_frame.columns]
+        static_features = static_cols if static_cols else None
+
+        feature_frame = self.forecaster.preprocess(
+            model_frame,
+            static_features=static_features,
+            keep_last_n=self.settings.forecast.keep_last_n,
+            as_numpy=False,
+        )
+        if feature_frame.empty:
+            return pd.DataFrame(columns=["unique_id", "ds"])
+
+        feature_cols = [c for c in feature_frame.columns if c not in {"unique_id", "ds", "y"}]
+        if not feature_cols:
+            return feature_frame[["unique_id", "ds"]].copy()
+
+        X = before_predict_cleanup(feature_frame[feature_cols])
+        fitted = feature_frame[["unique_id", "ds"]].copy()
+
+        models = getattr(self.forecaster, "models_", None) or self.forecaster.models
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message=(
+                    "X does not have valid feature names, but LGBMRegressor was fitted with "
+                    "feature names"
+                ),
+            )
+            for model_name, model in models.items():
+                raw_pred = model.predict(X)
+                clipped = after_predict_clip(np.asarray(raw_pred))
+                fitted[model_name] = np.asarray(clipped, dtype=float)
+
+        return fitted.reset_index(drop=True)
 
     def run_lightgbm_cv(self, training_frame: pd.DataFrame | None = None) -> pd.DataFrame:
         frame = training_frame if training_frame is not None else self._require_training_frame()
@@ -529,9 +660,43 @@ class ForecastPipeline:
             "week_of_year",
             "month_sin",
             "month_cos",
+            "volatility_5d",
+            "volatility_20d",
+            "momentum_5d",
+            "momentum_20d",
+            "range_pct",
+            "volume_ma_ratio",
         ]
         existing_cols = [col for col in cols if col in frame.columns]
         return frame[existing_cols].copy()
+
+    @classmethod
+    def _attach_latest_technical_features(
+        cls, future_x: pd.DataFrame, training_frame: pd.DataFrame
+    ) -> pd.DataFrame:
+        """
+        Attach last-known technical regime features to future exogenous rows.
+
+        These features are informative for near-term forecasts; for unknown
+        future values we hold the most recent observed regime constant.
+        """
+        tech_cols = [c for c in cls._TECHNICAL_FEATURE_COLUMNS if c in training_frame.columns]
+        if not tech_cols:
+            return future_x
+
+        latest = (
+            training_frame
+            .sort_values(["unique_id", "ds"])
+            .groupby("unique_id", as_index=False)
+            .tail(1)[["unique_id", *tech_cols]]
+        )
+        out = future_x.merge(latest, on="unique_id", how="left")
+
+        # Safe defaults when a series is missing technical state (rare).
+        for col in tech_cols:
+            default = 1.0 if col == "volume_ma_ratio" else 0.0
+            out[col] = pd.to_numeric(out[col], errors="coerce").fillna(default)
+        return out
 
     def run_full_pipeline(self, download: bool = True) -> dict[str, Any]:
         frame = self.prepare_training_data(download=download)

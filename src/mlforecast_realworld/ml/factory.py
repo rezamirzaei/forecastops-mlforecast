@@ -493,7 +493,13 @@ def build_mlforecast(settings: ForecastSettings) -> MLForecast:
     }
 
     date_features: list[Any] = ["dayofweek", "month", "quarter", week_of_month]
-    target_transforms: list[Any] = [Differences([1]), LocalStandardScaler()]
+    # Returns are already stationary enough for most models; extra differencing
+    # tends to amplify lag-1 persistence and can look like a shifted copy.
+    target_transforms: list[Any]
+    if settings.target_type == "price":
+        target_transforms = [Differences([1]), LocalStandardScaler()]
+    else:
+        target_transforms = [LocalStandardScaler()]
 
     return MLForecast(
         models=default_models(settings.random_state),

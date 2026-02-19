@@ -278,6 +278,13 @@ button:not(:disabled):hover {
   border-color: rgba(255, 193, 7, 0.4);
 }
 
+.info-hint {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 0.8rem;
+  color: rgba(54, 162, 235, 0.9);
+}
+
 .filters {
   display: grid;
   grid-template-columns: 1fr 1fr auto;
