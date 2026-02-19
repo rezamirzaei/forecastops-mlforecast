@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from mlforecast_realworld.api.service import ForecastService
 from mlforecast_realworld.config import get_settings
 from mlforecast_realworld.logging_config import get_logger, setup_logging
-from mlforecast_realworld.schemas.records import ForecastRequest, PipelineSummary
+from mlforecast_realworld.schemas.records import BacktestRequest, ForecastRequest, PipelineSummary
 
 logger = get_logger(__name__)
 
@@ -184,6 +184,36 @@ def create_app() -> FastAPI:
         except ValueError as exc:
             logger.warning("History error: %s", exc)
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/backtest", tags=["forecast"])
+    def backtest(
+        ids: str | None = None,
+        last_n: int = 50,
+    ) -> dict[str, object]:
+        """
+        Get in-sample (fitted) predictions for historical data.
+
+        Returns model predictions for dates where actual values are known,
+        enabling visual comparison of predicted vs actual values.
+
+        Args:
+            ids: Comma-separated list of series IDs (default: all).
+            last_n: Number of recent fitted values per series (default: 50).
+
+        Returns:
+            Backtest prediction records in the same format as forecast.
+        """
+        try:
+            id_list = [s.strip() for s in ids.split(",")] if ids else None
+            request = BacktestRequest(ids=id_list, last_n=last_n)
+            records = service.get_backtest(request)
+            return {"records": records, "count": len(records)}
+        except ValueError as exc:
+            logger.warning("Backtest error: %s", exc)
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            logger.error("Runtime error during backtest: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     # ==================== Background Task Endpoints ====================
 

@@ -181,3 +181,23 @@ def test_forecast_filters_ids_without_passing_subset_to_predict(
     assert preds["unique_id"].tolist() == ["AAPL.US"]
     assert "ensemble_mean" in preds.columns
     assert preds["ensemble_mean"].tolist() == [105.0]
+
+
+def test_load_model_retries_with_numpy_pickle_aliases(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pipeline = ForecastPipeline(settings=_test_settings(tmp_path))
+    sentinel = object()
+    state = {"first": True}
+
+    def fake_load(_path):
+        if state["first"]:
+            state["first"] = False
+            raise ModuleNotFoundError("No module named 'numpy._core.numeric'")
+        return sentinel
+
+    monkeypatch.setattr(pipeline_mod.MLForecast, "load", staticmethod(fake_load))
+
+    loaded = pipeline.load_model()
+    assert loaded is sentinel

@@ -49,6 +49,9 @@ export interface ForecastResponse {
   count: number;
 }
 
+/** Backtest uses the same shape as forecast (fitted values for known dates). */
+export type BacktestResponse = ForecastResponse;
+
 export interface HistoryResponse {
   records: HistoryRecord[];
   count: number;

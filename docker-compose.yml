@@ -10,6 +10,7 @@ services:
       - ENVIRONMENT=prod
       # Set INIT_DATA=true to download data and train model on first startup
       - INIT_DATA=${INIT_DATA:-false}
+      - DOCKER_BUILDKIT=1
     volumes:
       # Map local directories to use your existing artifacts
       - ./data:/app/data
@@ -19,7 +20,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 30s
     restart: unless-stopped
 
   frontend:
@@ -30,5 +31,6 @@ services:
     ports:
       - "4200:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_started
     restart: unless-stopped

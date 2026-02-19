@@ -212,6 +212,33 @@ button:not(:disabled):hover {
   color: rgba(54, 162, 235, 0.7);
 }
 
+.legend-dotted {
+  color: rgba(255, 159, 64, 0.85);
+}
+
+.backtest-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  user-select: none;
+
+  input[type="checkbox"] {
+    accent-color: var(--accent);
+  }
+}
+
+.backtest-message {
+  margin: 0 0 0.8rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid rgba(196, 81, 45, 0.35);
+  background: rgba(196, 81, 45, 0.08);
+  color: rgba(20, 35, 59, 0.9);
+  font-size: 0.82rem;
+}
+
 .table-note {
   margin: 0.5rem 0 0;
   font-size: 0.85rem;
@@ -495,4 +522,3 @@ button:not(:disabled):hover {
   font-size: 0.75rem;
   padding: 0.35rem 0.6rem;
 }
-

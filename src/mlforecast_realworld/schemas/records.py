@@ -45,6 +45,12 @@ class ForecastRequest(BaseModel):
     levels: list[int] = Field(default_factory=lambda: [80, 95])
 
 
+class BacktestRequest(BaseModel):
+    """Request for backtesting predictions on historical data."""
+    ids: list[str] | None = None
+    last_n: PositiveInt = 50
+
+
 class PipelineSummary(BaseModel):
     rows: int
     unique_series: int

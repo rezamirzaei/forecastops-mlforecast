@@ -123,6 +123,10 @@ class ForecastPipeline:
         return self.settings.resolved_path(self.settings.paths.model_dir) / "mlforecast_model"
 
     @property
+    def fitted_values_path(self) -> Path:
+        return self.settings.resolved_path(self.settings.paths.model_dir) / "fitted_values.parquet"
+
+    @property
     def report_path(self) -> Path:
         return self.settings.resolved_path(self.settings.paths.report_dir) / "pipeline_report.json"
 
@@ -245,7 +249,9 @@ class ForecastPipeline:
                     )
                     self.intervals_enabled = False
         self.forecaster = forecaster
-        return forecaster.forecast_fitted_values()
+        fitted = forecaster.forecast_fitted_values()
+        save_parquet(fitted, self.fitted_values_path)
+        return fitted
 
     def cross_validate(
         self, training_frame: pd.DataFrame | None = None
@@ -440,9 +446,51 @@ class ForecastPipeline:
         self.forecaster.save(model_path)
         return model_path
 
+    @staticmethod
+    def _install_numpy_pickle_compat_aliases() -> None:
+        """
+        Provide module aliases for cross-version NumPy pickle compatibility.
+
+        Some persisted artifacts may reference ``numpy._core`` (NumPy 2) while
+        runtime has ``numpy.core`` (NumPy 1.x).
+        """
+        import sys
+
+        import numpy.core as np_core
+        import numpy.core.numeric as np_numeric
+
+        sys.modules.setdefault("numpy._core", np_core)
+        sys.modules.setdefault("numpy._core.numeric", np_numeric)
+
     def load_model(self) -> MLForecast:
-        self.forecaster = MLForecast.load(self.model_path)
+        try:
+            self.forecaster = MLForecast.load(self.model_path)
+        except ModuleNotFoundError as exc:
+            if "numpy._core" not in str(exc):
+                raise
+            self._install_numpy_pickle_compat_aliases()
+            self.forecaster = MLForecast.load(self.model_path)
         return self.forecaster
+
+    def get_fitted_values(self) -> pd.DataFrame:
+        """Return fitted (in-sample) predictions.
+
+        Tries ``forecast_fitted_values()`` first (available when the model was
+        fit in the current session).  Falls back to the persisted parquet file
+        produced during training.
+        """
+        if self.forecaster is not None:
+            try:
+                return self.forecaster.forecast_fitted_values()
+            except Exception:
+                pass
+        if self.fitted_values_path.exists():
+            return load_parquet(self.fitted_values_path)
+        raise ValueError(
+            "Fitted values not available. The model must be trained with "
+            "the current pipeline (run /tasks/full-pipeline) to generate "
+            "backtest predictions."
+        )
 
     def run_lightgbm_cv(self, training_frame: pd.DataFrame | None = None) -> pd.DataFrame:
         frame = training_frame if training_frame is not None else self._require_training_frame()

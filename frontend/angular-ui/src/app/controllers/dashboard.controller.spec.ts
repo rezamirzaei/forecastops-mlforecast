@@ -37,6 +37,13 @@ class MockApiService {
     return of({ records: [{ unique_id: 'AAPL.US', ds: '2024-01-10', value: 120.0 }], count: 1 });
   }
 
+  getBacktest() {
+    return of({
+      records: [{ unique_id: 'AAPL.US', ds: '2024-01-10', model_name: 'lin_reg', value: 119.7 }],
+      count: 1,
+    });
+  }
+
   getSystemStatus() {
     return of({
       has_data: true,
@@ -180,6 +187,8 @@ describe('DashboardControllerComponent', () => {
     component.runForecast();
     expect(component.records.length).toBe(1);
     expect(component.historyRecords.length).toBe(1);
+    expect(component.backtestRecords.length).toBe(1);
+    expect(component.backtestMessage).toBe('');
   });
 
   it('starts data update as background task', () => {

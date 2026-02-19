@@ -3,6 +3,7 @@ import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import {
+  BacktestResponse,
   CompaniesResponse,
   ForecastRequest,
   ForecastResponse,
@@ -52,6 +53,14 @@ export class ForecastApiService {
       params = params.set('ids', ids.join(','));
     }
     return this.http.get<HistoryResponse>(`${this.baseUrl}/history`, { params });
+  }
+
+  getBacktest(ids?: string[], lastN = 50): Observable<BacktestResponse> {
+    let params = new HttpParams().set('last_n', String(lastN));
+    if (ids && ids.length > 0) {
+      params = params.set('ids', ids.join(','));
+    }
+    return this.http.get<BacktestResponse>(`${this.baseUrl}/backtest`, { params });
   }
 
   health(): Observable<{ status: string }> {

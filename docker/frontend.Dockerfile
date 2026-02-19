@@ -1,9 +1,14 @@
+# syntax=docker/dockerfile:1
+
 FROM node:20-alpine AS build
 WORKDIR /ui
 
+# Install dependencies first (layer cache)
 COPY frontend/angular-ui/package*.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci
 
+# Copy source and build
 COPY frontend/angular-ui/ ./
 RUN npm run build
 

@@ -1,7 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { forkJoin, interval, Subject, takeUntil } from 'rxjs';
+import { catchError, forkJoin, interval, of, Subject, takeUntil } from 'rxjs';
 
 import { ForecastChartComponent } from '../components/forecast-chart.component';
 import { MetricsChartComponent } from '../components/metrics-chart.component';
@@ -54,6 +54,9 @@ export class DashboardControllerComponent implements OnInit, OnDestroy {
   metrics: AccuracyMetric[] = [];
   records: ForecastRecord[] = [];
   historyRecords: HistoryRecord[] = [];
+  backtestRecords: ForecastRecord[] = [];
+  showBacktest = true;
+  backtestMessage = '';
   errorMessage = '';
   successMessage = '';
   isLoading = false;
@@ -289,6 +292,7 @@ export class DashboardControllerComponent implements OnInit, OnDestroy {
     this.isForecasting = true;
     this.errorMessage = '';
     this.successMessage = '';
+    this.backtestMessage = '';
 
     forkJoin({
       forecast: this.api.forecast({
@@ -297,10 +301,21 @@ export class DashboardControllerComponent implements OnInit, OnDestroy {
         levels: this.parseLevels(this.levels),
       }),
       history: this.api.getHistory(this.selectedIds, this.historyDays),
+      backtest: this.api.getBacktest(this.selectedIds, this.historyDays).pipe(
+        catchError((err) => {
+          this.backtestMessage = `Historical predictions unavailable: ${this.buildError(err)}`;
+          return of({ records: [] as ForecastRecord[], count: 0 });
+        }),
+      ),
     }).subscribe({
-      next: ({ forecast, history }) => {
+      next: ({ forecast, history, backtest }) => {
         this.records = forecast.records;
         this.historyRecords = history.records;
+        this.backtestRecords = backtest.records;
+        if (backtest.count === 0 && !this.backtestMessage) {
+          this.backtestMessage =
+            'Historical predictions are not available yet. Train the model again to generate fitted values.';
+        }
         this.availableModels = [...new Set(forecast.records.map(r => r.model_name))];
         if (this.availableModels.length > 0 && !this.selectedModel) {
           this.selectedModel = this.availableModels.includes('ensemble_mean')

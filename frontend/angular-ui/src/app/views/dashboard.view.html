@@ -229,14 +229,21 @@
           </select>
         </label>
       </div>
+      <label class="backtest-toggle" *ngIf="backtestRecords.length > 0">
+        <input type="checkbox" [(ngModel)]="showBacktest" />
+        Show Model Predictions on History
+      </label>
       <div class="chart-legend">
-        <span class="legend-solid">━ History</span>
+        <span class="legend-solid">━ Actual</span>
+        <span class="legend-dotted" *ngIf="showBacktest && backtestRecords.length > 0">┄ Predicted</span>
         <span class="legend-dashed">┅ Forecast</span>
       </div>
     </div>
+    <p class="backtest-message" *ngIf="backtestMessage">{{ backtestMessage }}</p>
     <app-forecast-chart
       [records]="records"
       [historyRecords]="historyRecords"
+      [backtestRecords]="showBacktest ? backtestRecords : []"
       [selectedModel]="selectedModel">
     </app-forecast-chart>
   </section>

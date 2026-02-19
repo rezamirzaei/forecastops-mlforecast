@@ -5,13 +5,32 @@
 __pycache__
 .pytest_cache
 .ruff_cache
+*.pyc
+*.pyo
 
-artifacts
+# Large data/artifacts (mounted as volumes at runtime)
+artifacts/
+data/
 
-data/raw
-data/processed
-
+# Frontend build artifacts and deps
 frontend/angular-ui/node_modules
 frontend/angular-ui/dist
+frontend/angular-ui/.angular
 
+# Notebooks and docs
 *.ipynb
+notebooks/
+docs/
+
+# Test files (not needed in production image)
+tests/
+
+# Script artifacts (local dev only)
+scripts/artifacts
+scripts/data
+
+# Misc
+*.egg-info
+uv.lock
+LICENSE
+Makefile

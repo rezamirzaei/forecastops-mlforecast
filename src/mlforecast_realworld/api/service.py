@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from mlforecast_realworld.api.background_tasks import (
@@ -26,6 +27,7 @@ from mlforecast_realworld.data.sp500 import (
 from mlforecast_realworld.ml.pipeline import ForecastPipeline
 from mlforecast_realworld.schemas.records import (
     AccuracyMetric,
+    BacktestRequest,
     ForecastRequest,
     PipelineSummary,
     forecast_records_from_frame,
@@ -330,22 +332,8 @@ class ForecastService:
         )
 
     def get_forecast(self, request: ForecastRequest) -> list[dict[str, Any]]:
-        # Ensure model and data are loaded
-        if self.pipeline.forecaster is None:
-            if self.pipeline.model_path.exists():
-                self.pipeline.load_model()
-                logger.info("Loaded model for forecast request")
-            else:
-                raise ValueError("Model not available. Run pipeline first.")
-
-        if self.pipeline.training_frame is None:
-            if self.pipeline.processed_data_path.exists():
-                self.pipeline.training_frame = pd.read_parquet(
-                    self.pipeline.processed_data_path
-                )
-                logger.info("Loaded training data for forecast request")
-            else:
-                raise ValueError("Training data not available. Run pipeline first.")
+        self._ensure_training_data()
+        self._ensure_model_loaded()
 
         preds = self.pipeline.forecast(
             horizon=request.horizon,
@@ -355,6 +343,113 @@ class ForecastService:
         model_cols = self._prediction_model_columns(preds)
         forecast_records = forecast_records_from_frame(preds, model_cols)
         return [record.model_dump() for record in forecast_records]
+
+    def get_backtest(self, request: BacktestRequest) -> list[dict[str, Any]]:
+        """
+        Get in-sample (fitted) predictions for the last N historical days.
+
+        Uses fitted values from the training run (in-memory or persisted to
+        disk) so the backtest works even when the model was loaded from a
+        saved checkpoint.
+        """
+        self._ensure_training_data()
+        frame = self.pipeline.training_frame
+        if frame is None:
+            raise ValueError("Training data not available. Run pipeline first.")
+
+        fitted = self.pipeline.get_fitted_values()
+
+        model_cols = self._prediction_model_columns(fitted)
+
+        # Filter to requested IDs
+        if request.ids:
+            fitted = fitted[fitted["unique_id"].isin(request.ids)]
+
+        # Keep only the last N days per series
+        fitted = (
+            fitted
+            .sort_values("ds")
+            .groupby("unique_id", sort=False)
+            .tail(request.last_n)
+            .reset_index(drop=True)
+        )
+
+        # Reconstruct prices if the target is returns
+        if self.pipeline.data_engineer.target_type.value != "price":
+            fitted = self._reconstruct_backtest_prices(
+                fitted=fitted,
+                model_cols=model_cols,
+                history_frame=frame,
+            )
+
+        # Add ensemble mean
+        fitted = self.pipeline._add_ensemble_column(fitted, model_cols)
+        model_cols_with_ensemble = self._prediction_model_columns(fitted)
+
+        forecast_records = forecast_records_from_frame(fitted, model_cols_with_ensemble)
+        return [record.model_dump() for record in forecast_records]
+
+    def _ensure_training_data(self) -> None:
+        """Load training data if not already in memory."""
+        if self.pipeline.training_frame is None:
+            if self.pipeline.processed_data_path.exists():
+                self.pipeline.training_frame = pd.read_parquet(
+                    self.pipeline.processed_data_path
+                )
+                logger.info("Auto-loaded training data")
+            else:
+                raise ValueError("Training data not available. Run pipeline first.")
+
+    def _ensure_model_loaded(self) -> None:
+        """Load model if not already in memory."""
+        if self.pipeline.forecaster is None:
+            if self.pipeline.model_path.exists():
+                try:
+                    self.pipeline.load_model()
+                    logger.info("Auto-loaded model")
+                except Exception as exc:
+                    raise ValueError(
+                        f"Saved model could not be loaded ({exc}). "
+                        "Use compatible dependencies or retrain the model."
+                    ) from exc
+            else:
+                raise ValueError("Model not available. Run pipeline first.")
+
+    def _reconstruct_backtest_prices(
+        self,
+        fitted: pd.DataFrame,
+        model_cols: list[str],
+        history_frame: pd.DataFrame,
+    ) -> pd.DataFrame:
+        """
+        Convert fitted return predictions into prices aligned to each historical date.
+
+        For historical fitted values we reconstruct each point from the previous
+        observed close (t-1), not from the latest available close.
+        """
+        out = fitted.copy()
+        out["ds"] = pd.to_datetime(out["ds"])
+
+        history = history_frame[["unique_id", "ds", "close"]].copy()
+        history["ds"] = pd.to_datetime(history["ds"])
+        history = history.sort_values(["unique_id", "ds"])
+        history["prev_close"] = history.groupby("unique_id")["close"].shift(1)
+
+        aligned = out.merge(
+            history[["unique_id", "ds", "close", "prev_close"]],
+            on=["unique_id", "ds"],
+            how="left",
+        )
+        base_price = aligned["prev_close"].fillna(aligned["close"]).fillna(1.0)
+
+        target_type = self.pipeline.data_engineer.target_type.value
+        for model_col in model_cols:
+            if target_type == "log_return":
+                aligned[model_col] = base_price * np.exp(aligned[model_col].astype(float))
+            else:
+                aligned[model_col] = base_price * (1 + aligned[model_col].astype(float))
+
+        return aligned.drop(columns=["close", "prev_close"])
 
     def get_metrics(
         self, run_if_missing: bool = True, download: bool = False
