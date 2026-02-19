@@ -545,12 +545,12 @@ class ForecastPipeline:
         return self.forecaster
 
     def get_fitted_values(self, ids: list[str] | None = None) -> pd.DataFrame:
-        """Return fitted (in-sample) predictions.
+        """Return in-sample (historical) predictions.
 
-        Tries ``forecast_fitted_values()`` first (available when the model was
-        fit in the current session). If unavailable, computes fitted values at
-        runtime from the persisted model and historical data. A legacy parquet
-        artifact is used only as a final fallback.
+        Predictions are always computed at runtime from the trained model
+        weights so that back-test charts work for **any** company with
+        available historical data — regardless of which companies the model
+        was originally trained on.
         """
         frame = self._require_training_frame()
         if ids:
@@ -562,34 +562,38 @@ class ForecastPipeline:
             self.load_model()
 
         if self.forecaster is not None:
-            try:
-                fitted = self.forecaster.forecast_fitted_values()
-                if ids:
-                    fitted = fitted[fitted["unique_id"].isin(ids)].reset_index(drop=True)
-                return fitted
-            except Exception:
-                pass
-
             return self._compute_fitted_values_from_frame(frame)
 
-        if self.fitted_values_path.exists():
-            fitted = load_parquet(self.fitted_values_path)
-            if ids:
-                fitted = fitted[fitted["unique_id"].isin(ids)].reset_index(drop=True)
-            return fitted
-
         raise ValueError(
-            "Fitted values not available. Train or load a model first."
+            "Model not available. Train or load a model first."
         )
 
     def _compute_fitted_values_from_frame(self, frame: pd.DataFrame) -> pd.DataFrame:
-        """Compute one-step in-sample predictions from model weights at runtime."""
+        """Compute one-step in-sample predictions from model weights at runtime.
+
+        The method reproduces the same pipeline that MLForecast uses
+        internally in ``_compute_fitted_values``:
+
+        1. ``preprocess`` applies target-transforms (e.g. ``LocalStandardScaler``)
+           and builds lag / rolling features in the **transformed** space.
+        2. Each model's ``.predict(X)`` returns values in that transformed space.
+        3. The forecaster's ``_invert_transforms_fitted`` reverses the transforms
+           so that the output is back in the **original** target space (e.g. log
+           returns), which the service layer can then convert to prices.
+        """
         if self.forecaster is None:
             raise ValueError("Model not available for fitted-value computation.")
 
         model_frame = self._model_frame(frame)
         static_cols = [c for c in ["sector_code", "asset_class_code"] if c in model_frame.columns]
         static_features = static_cols if static_cols else None
+
+        # Enable fitted-value storage so that transforms like Differences
+        # record enough state for a correct inverse transform.
+        if self.forecaster.ts.target_transforms is not None:
+            for tfm in self.forecaster.ts.target_transforms:
+                if hasattr(tfm, "store_fitted"):
+                    tfm.store_fitted = True
 
         feature_frame = self.forecaster.preprocess(
             model_frame,
@@ -605,7 +609,11 @@ class ForecastPipeline:
             return feature_frame[["unique_id", "ds"]].copy()
 
         X = before_predict_cleanup(feature_frame[feature_cols])
-        fitted = feature_frame[["unique_id", "ds"]].copy()
+
+        # Build a fitted-values frame exactly as MLForecast does: include
+        # unique_id, ds and the (transformed) target column ``y`` so that
+        # _invert_transforms_fitted can operate on all columns together.
+        fitted = feature_frame[["unique_id", "ds", "y"]].copy()
 
         models = getattr(self.forecaster, "models_", None) or self.forecaster.models
         with warnings.catch_warnings():
@@ -620,6 +628,21 @@ class ForecastPipeline:
                 raw_pred = model.predict(X)
                 clipped = after_predict_clip(np.asarray(raw_pred))
                 fitted[model_name] = np.asarray(clipped, dtype=float)
+
+        # Inverse-transform from the scaled space back to the original target
+        # space (e.g. log returns) using the same logic MLForecast uses.
+        fitted = self.forecaster._invert_transforms_fitted(fitted)
+
+        # Clean up the store_fitted flag so it doesn't affect future calls.
+        if self.forecaster.ts.target_transforms is not None:
+            for tfm in self.forecaster.ts.target_transforms[::-1]:
+                if hasattr(tfm, "store_fitted"):
+                    tfm.store_fitted = False
+                if hasattr(tfm, "fitted_"):
+                    tfm.fitted_ = []
+
+        # Drop the ``y`` column — callers only need id, ds and model columns.
+        fitted = fitted.drop(columns=["y"], errors="ignore")
 
         return fitted.reset_index(drop=True)
 

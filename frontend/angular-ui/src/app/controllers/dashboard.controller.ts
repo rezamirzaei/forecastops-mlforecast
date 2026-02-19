@@ -314,7 +314,7 @@ export class DashboardControllerComponent implements OnInit, OnDestroy {
         this.backtestRecords = backtest.records;
         if (backtest.count === 0 && !this.backtestMessage) {
           this.backtestMessage =
-            'Historical predictions are not available yet. Train the model again to generate fitted values.';
+            'No historical predictions available for the selected companies. Ensure data has been downloaded and a model is trained.';
         }
         this.availableModels = [...new Set(forecast.records.map(r => r.model_name))];
         if (this.availableModels.length > 0 && !this.selectedModel) {

@@ -241,10 +241,7 @@ def test_get_fitted_values_computes_runtime_from_model_weights(tmp_path: Path) -
     class StubForecaster:
         models = {"stub_model": StubModel()}
         models_ = {"stub_model": StubModel()}
-
-        @staticmethod
-        def forecast_fitted_values():
-            raise RuntimeError("not available")
+        ts = type("TS", (), {"target_transforms": None})()
 
         @staticmethod
         def preprocess(frame, static_features=None, keep_last_n=None, as_numpy=False):  # noqa: ARG002
@@ -252,12 +249,64 @@ def test_get_fitted_values_computes_runtime_from_model_weights(tmp_path: Path) -
             out["lag1"] = 1.0
             return out
 
+        @staticmethod
+        def _invert_transforms_fitted(df):
+            return df
+
     pipeline.forecaster = StubForecaster()  # type: ignore[assignment]
     fitted = pipeline.get_fitted_values(ids=["AAPL.US"])
     assert not fitted.empty
     assert set(fitted["unique_id"].tolist()) == {"AAPL.US"}
     assert "stub_model" in fitted.columns
     assert set(fitted["stub_model"].tolist()) == {0.42}
+
+
+def test_get_fitted_values_computes_any_company_at_runtime(tmp_path: Path) -> None:
+    """get_fitted_values always computes at runtime — works for any company with data."""
+    pipeline = ForecastPipeline(settings=_test_settings(tmp_path))
+    pipeline.training_frame = pd.DataFrame(
+        {
+            "unique_id": ["AAPL.US", "AAPL.US", "MSFT.US"],
+            "ds": pd.to_datetime(["2024-01-01", "2024-01-02", "2024-01-01"]),
+            "y": [0.1, 0.2, 0.3],
+        }
+    )
+
+    class StubModel:
+        @staticmethod
+        def predict(X):
+            return np.full(len(X), 0.55)
+
+    class StubForecaster:
+        models = {"stub_model": StubModel()}
+        models_ = {"stub_model": StubModel()}
+        ts = type("TS", (), {"target_transforms": None})()
+
+        @staticmethod
+        def preprocess(frame, static_features=None, keep_last_n=None, as_numpy=False):  # noqa: ARG002
+            out = frame.copy()
+            out["lag1"] = 1.0
+            return out
+
+        @staticmethod
+        def _invert_transforms_fitted(df):
+            return df
+
+    pipeline.forecaster = StubForecaster()  # type: ignore[assignment]
+
+    # Request both A (trained on) and B (not trained on) — both work
+    fitted = pipeline.get_fitted_values(ids=["AAPL.US", "MSFT.US"])
+    assert not fitted.empty
+    found_ids = set(fitted["unique_id"].tolist())
+    assert "AAPL.US" in found_ids
+    assert "MSFT.US" in found_ids
+    assert "stub_model" in fitted.columns
+    assert all(v == 0.55 for v in fitted["stub_model"].tolist())
+
+    # Request only B (not trained on) — still works
+    fitted_b = pipeline.get_fitted_values(ids=["MSFT.US"])
+    assert not fitted_b.empty
+    assert set(fitted_b["unique_id"].tolist()) == {"MSFT.US"}
 
 
 def test_forecast_injects_unseen_ids_history_into_forecaster(tmp_path: Path) -> None:
