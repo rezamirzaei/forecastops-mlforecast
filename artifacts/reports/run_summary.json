@@ -1,0 +1,9 @@
+{
+  "rows": 921124,
+  "series": 503,
+  "fitted_rows": 900501,
+  "cv_rows": 14084,
+  "forecast_rows": 7042,
+  "best_model": "hgb",
+  "model_path": "/Users/rezami/PycharmProjects/PythonProject12/scripts/artifacts/models/mlforecast_model"
+}
