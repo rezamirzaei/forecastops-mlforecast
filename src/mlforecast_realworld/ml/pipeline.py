@@ -57,6 +57,11 @@ def after_predict_clip(values: pd.Series | pd.DataFrame | np.ndarray) -> Any:
     """
     Clip prediction values to ensure non-negative outputs.
 
+    Note: This is appropriate for direct price targets. For returns-based
+    targets (log/percent returns), negative values are valid and should not
+    be clipped to zero or the forecast will degenerate into a "lag-1" copy
+    of the actual series after price reconstruction.
+
     Args:
         values: Prediction values to clip.
 
@@ -69,6 +74,18 @@ def after_predict_clip(values: pd.Series | pd.DataFrame | np.ndarray) -> Any:
         return values.clip(lower=0)
     if isinstance(values, np.ndarray):
         return np.clip(values, a_min=0, a_max=None)
+    return values
+
+
+def after_predict_clip_percent_return(values: pd.Series | pd.DataFrame | np.ndarray) -> Any:
+    """Clip percent-return predictions to keep reconstructed prices positive."""
+    lower = -0.999999
+    if isinstance(values, pd.Series):
+        return values.clip(lower=lower)
+    if isinstance(values, pd.DataFrame):
+        return values.clip(lower=lower)
+    if isinstance(values, np.ndarray):
+        return np.clip(values, a_min=lower, a_max=None)
     return values
 
 
@@ -116,6 +133,15 @@ class ForecastPipeline:
         self.intervals_enabled = False
         self._last_prices: pd.DataFrame | None = None
         self._ensure_dirs()
+
+    def _after_predict_callback(self, values: pd.Series | pd.DataFrame | np.ndarray) -> Any:
+        """Post-process raw model outputs based on the configured target type."""
+        target_type = self.data_engineer.target_type.value
+        if target_type == "price":
+            return after_predict_clip(values)
+        if target_type == "percent_return":
+            return after_predict_clip_percent_return(values)
+        return values
 
     @property
     def raw_data_path(self) -> Path:
@@ -303,7 +329,7 @@ class ForecastPipeline:
                     prediction_intervals=intervals,
                     level=levels,
                     before_predict_callback=before_predict_cleanup,
-                    after_predict_callback=after_predict_clip,
+                    after_predict_callback=self._after_predict_callback,
                     as_numpy=True,
                 )
             except ValueError as exc:
@@ -323,7 +349,7 @@ class ForecastPipeline:
                     prediction_intervals=None,
                     level=None,
                     before_predict_callback=before_predict_cleanup,
-                    after_predict_callback=after_predict_clip,
+                    after_predict_callback=self._after_predict_callback,
                     as_numpy=True,
                 )
                 self.intervals_enabled = False
@@ -405,7 +431,7 @@ class ForecastPipeline:
                 X_df=future_x,
                 level=predict_levels,
                 before_predict_callback=before_predict_cleanup,
-                after_predict_callback=after_predict_clip,
+                after_predict_callback=self._after_predict_callback,
             )
 
         # Reconstruct prices from returns BEFORE ensemble calculation
@@ -626,8 +652,9 @@ class ForecastPipeline:
             )
             for model_name, model in models.items():
                 raw_pred = model.predict(X)
-                clipped = after_predict_clip(np.asarray(raw_pred))
-                fitted[model_name] = np.asarray(clipped, dtype=float)
+                raw_values = np.asarray(raw_pred)
+                postprocessed = self._after_predict_callback(raw_values)
+                fitted[model_name] = np.asarray(postprocessed, dtype=float)
 
         # Inverse-transform from the scaled space back to the original target
         # space (e.g. log returns) using the same logic MLForecast uses.

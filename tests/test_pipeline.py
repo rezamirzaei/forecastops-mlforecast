@@ -54,6 +54,12 @@ def _test_settings(tmp_path: Path) -> AppSettings:
     )
 
 
+def _test_settings_log_return(tmp_path: Path) -> AppSettings:
+    settings = _test_settings(tmp_path)
+    settings.forecast.target_type = "log_return"
+    return settings
+
+
 def test_pipeline_full_flow(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -442,3 +448,39 @@ def test_load_model_retries_with_numpy_pickle_aliases(
 
     loaded = pipeline.load_model()
     assert loaded is sentinel
+
+
+def test_get_fitted_values_does_not_clip_negative_returns(tmp_path: Path) -> None:
+    pipeline = ForecastPipeline(settings=_test_settings_log_return(tmp_path))
+    pipeline.training_frame = pd.DataFrame(
+        {
+            "unique_id": ["AAPL.US", "AAPL.US"],
+            "ds": pd.to_datetime(["2024-01-01", "2024-01-02"]),
+            "y": [0.1, -0.2],
+        }
+    )
+
+    class StubModel:
+        @staticmethod
+        def predict(X):
+            return np.full(len(X), -0.42)
+
+    class StubForecaster:
+        models = {"stub_model": StubModel()}
+        models_ = {"stub_model": StubModel()}
+        ts = type("TS", (), {"target_transforms": None})()
+
+        @staticmethod
+        def preprocess(frame, static_features=None, keep_last_n=None, as_numpy=False):  # noqa: ARG002
+            out = frame.copy()
+            out["lag1"] = 1.0
+            return out
+
+        @staticmethod
+        def _invert_transforms_fitted(df):
+            return df
+
+    pipeline.forecaster = StubForecaster()  # type: ignore[assignment]
+    fitted = pipeline.get_fitted_values(ids=["AAPL.US"])
+    assert "stub_model" in fitted.columns
+    assert set(fitted["stub_model"].tolist()) == {-0.42}
